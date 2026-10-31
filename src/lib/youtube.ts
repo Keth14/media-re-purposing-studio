@@ -215,3 +215,4 @@ export function parsePastedTranscript(text: string): {
 
   return mergeTranscriptSegments(rawSegments, 20);
 }
+

@@ -35,12 +35,22 @@ export default function Home() {
   const [videoId, setVideoId] = useState<string | null>(null);
   const [transcriptPreview, setTranscriptPreview] = useState<string | null>(null);
   const [clips, setClips] = useState<Clip[]>([]);
+  const [fromCache, setFromCache] = useState<boolean>(false);
+
+  // Prevent double-clicks or React strict-mode double firing
+  const isSubmittingRef = React.useRef<boolean>(false);
 
   const handleFindClips = async () => {
+    // Guard against duplicate invocations while processing
+    if (isSubmittingRef.current || Boolean(loadingStep)) {
+      return;
+    }
+
     setError(null);
     setFallbackNotice(null);
     setClips([]);
     setTranscriptPreview(null);
+    setFromCache(false);
 
     // 1. Validate inputs
     if (activeTab === 'youtube') {
@@ -54,6 +64,8 @@ export default function Home() {
         return;
       }
     }
+
+    isSubmittingRef.current = true;
 
     try {
       // Step 1: Ingest Transcript
@@ -106,7 +118,7 @@ export default function Home() {
         }),
       });
 
-      const clipsData: ClipsResponse = await clipsRes.json();
+      const clipsData: ClipsResponse & { fromCache?: boolean } = await clipsRes.json();
 
       if (!clipsRes.ok || !clipsData.success) {
         throw new Error(clipsData.error || 'Failed to select clips from transcript.');
@@ -117,11 +129,14 @@ export default function Home() {
       }
 
       setClips(clipsData.clips);
+      setFromCache(Boolean(clipsData.fromCache));
       setLoadingStep(null);
     } catch (err: unknown) {
       console.error(err);
       setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
       setLoadingStep(null);
+    } finally {
+      isSubmittingRef.current = false;
     }
   };
 
@@ -259,7 +274,7 @@ export default function Home() {
             <Button
               onClick={handleFindClips}
               disabled={Boolean(loadingStep)}
-              className="w-full rounded-xl bg-white text-black hover:bg-neutral-200 h-12 text-sm font-semibold tracking-wide transition-all shadow-lg shadow-white/5 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full rounded-xl bg-white text-black hover:bg-neutral-200 h-12 text-sm font-semibold tracking-wide transition-all shadow-lg shadow-white/5 disabled:opacity-50 disabled:pointer-events-none disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {loadingStep ? (
                 <>
@@ -310,9 +325,17 @@ export default function Home() {
             </div>
 
             {clips.length > 0 && (
-              <div className="inline-flex items-center gap-2 rounded-full border border-neutral-800 bg-neutral-900 px-3 py-1 text-xs text-neutral-300">
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
-                <span>6 clips ready</span>
+              <div className="flex items-center gap-2">
+                {fromCache && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-xs text-emerald-400 font-mono">
+                    <Sparkles className="h-3 w-3" />
+                    Cached (0 Gemini calls)
+                  </span>
+                )}
+                <div className="inline-flex items-center gap-2 rounded-full border border-neutral-800 bg-neutral-900 px-3 py-1 text-xs text-neutral-300">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                  <span>6 clips ready</span>
+                </div>
               </div>
             )}
           </div>

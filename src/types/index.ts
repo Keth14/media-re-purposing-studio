@@ -39,3 +39,4 @@ export interface ClipsResponse {
   clips: Clip[];
   error?: string;
 }
+

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI, Type } from '@google/genai';
-import { checkRateLimit } from '@/lib/rate-limiter';
+import { checkRateLimit, recordRateLimitSuccess } from '@/lib/rate-limiter';
+import { getClipsCacheKey, getCachedClips, setCachedClips } from '@/lib/clips-cache';
 import { Clip, HookType } from '@/types';
 
 // Helper to normalize strings for quote matching (ignoring punctuation, casing, extra whitespace)
@@ -15,15 +16,6 @@ function cleanStringForMatching(str: string): string {
 const VALID_HOOK_TYPES: HookType[] = ['question', 'bold claim', 'story', 'stat', 'contrarian'];
 
 export async function POST(req: NextRequest) {
-  // Rate limit check (max 10 requests per hour per IP)
-  const rateLimit = checkRateLimit(req);
-  if (!rateLimit.allowed) {
-    return NextResponse.json(
-      { success: false, error: rateLimit.error },
-      { status: 429 }
-    );
-  }
-
   try {
     const body = await req.json();
     const { formattedTranscript, videoId, totalDuration, rawText } = body;
@@ -34,6 +26,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { success: false, error: 'The transcript is too short to analyze for clips.' },
         { status: 400 }
+      );
+    }
+
+    // 1. Check in-memory cache first (keyed by video ID or hash of transcript)
+    const cacheKey = getClipsCacheKey(videoId, transcript);
+    const cached = getCachedClips(cacheKey);
+    if (cached) {
+      return NextResponse.json({
+        success: true,
+        videoId: cached.videoId,
+        clips: cached.clips,
+        fromCache: true,
+      });
+    }
+
+    // 2. Rate limit pre-check (only for /api/clips, disabled in development)
+    const rateLimit = checkRateLimit(req);
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { success: false, error: rateLimit.error },
+        { status: 429 }
       );
     }
 
@@ -289,10 +302,20 @@ Extract the 6 best short-form clips adhering strictly to the requirements and JS
     // Keep top 6
     const finalClips = validatedClips.slice(0, 6);
 
+    // Save to in-memory cache
+    setCachedClips(cacheKey, {
+      clips: finalClips,
+      videoId: videoId || null,
+    });
+
+    // Only count request against rate limit after it succeeds
+    recordRateLimitSuccess(req);
+
     return NextResponse.json({
       success: true,
       videoId: videoId || null,
       clips: finalClips,
+      fromCache: false,
     });
   } catch (err: unknown) {
     const error = err instanceof Error ? err.message : 'Unknown server error processing clips.';
@@ -304,3 +327,4 @@ function formatTitle(text: string): string {
   const words = text.split(/\s+/).slice(0, 6).join(' ');
   return words ? words + '...' : 'Compelling Insight';
 }
+

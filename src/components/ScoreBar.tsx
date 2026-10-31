@@ -24,3 +24,4 @@ export function ScoreBar({ label, score, color = 'bg-indigo-500' }: ScoreBarProp
     </div>
   );
 }
+

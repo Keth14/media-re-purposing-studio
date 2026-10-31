@@ -143,3 +143,4 @@ export function ClipCard({ clip, videoId, rank }: ClipCardProps) {
     </div>
   );
 }
+

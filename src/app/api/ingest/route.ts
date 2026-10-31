@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { YoutubeTranscript, YoutubeTranscriptError } from 'youtube-transcript';
-import { checkRateLimit } from '@/lib/rate-limiter';
 import {
   extractYouTubeVideoId,
   mergeTranscriptSegments,
@@ -9,15 +8,6 @@ import {
 import { TranscriptSegment } from '@/types';
 
 export async function POST(req: NextRequest) {
-  // Rate limit check
-  const rateLimit = checkRateLimit(req);
-  if (!rateLimit.allowed) {
-    return NextResponse.json(
-      { success: false, error: rateLimit.error },
-      { status: 429 }
-    );
-  }
-
   try {
     const body = await req.json();
     const { type, url, text, videoId: manualVideoId } = body;
@@ -141,3 +131,4 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error }, { status: 500 });
   }
 }
+
