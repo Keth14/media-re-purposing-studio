@@ -131,6 +131,15 @@
   }
 }
 
+/* Boot intro instant paint prevention */
+html[data-booting="1"] body > *:not(#boot-root) {
+  visibility: hidden !important;
+}
+
+html:not([data-booting="1"]) #boot-root {
+  display: none !important;
+}
+
 .studio-grain {
   background-image: radial-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 0);
   background-size: 28px 28px;
