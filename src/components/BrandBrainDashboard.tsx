@@ -17,6 +17,9 @@ import {
   Trash2,
   Sliders,
   History,
+  Tag,
+  Volume2,
+  Hash,
 } from 'lucide-react';
 import { BrainState, BrainRule, PostedResult, ComputedStats } from '@/types';
 import { computeStats } from '@/lib/stats';
@@ -172,7 +175,7 @@ export function BrandBrainDashboard({
               </span>
               <span className="text-[10px] text-neutral-500 font-mono">Channel</span>
             </div>
-            <p className="text-lg font-light text-white">{stats.bestPlatform}</p>
+            <p className="text-lg font-light text-white capitalize">{stats.bestPlatform.replace('_', ' ')}</p>
           </div>
 
           {/* Metric 4: Total Posts & Mean */}
@@ -187,6 +190,71 @@ export function BrandBrainDashboard({
             <div className="flex items-baseline gap-2">
               <span className="text-lg font-light text-white">{stats.totalPosts}</span>
               <span className="text-xs text-neutral-500 font-mono">tracked</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Voice Architecture Glass Card */}
+      <div className="rounded-3xl border border-neutral-800/80 bg-neutral-900/30 p-6 backdrop-blur-xl space-y-4 shadow-xl">
+        <div className="flex items-center justify-between border-b border-neutral-800/80 pb-3">
+          <div className="flex items-center gap-2.5">
+            <Volume2 className="h-4 w-4 text-indigo-400" />
+            <h3 className="text-sm font-medium text-white">Active Brand Voice Summary & Directives</h3>
+          </div>
+          <span className="rounded-full bg-neutral-800 border border-neutral-700/60 px-2.5 py-0.5 text-[10px] font-mono text-neutral-300">
+            Version {currentVersion}
+          </span>
+        </div>
+
+        <div className="space-y-3">
+          <p className="text-sm text-neutral-200 leading-relaxed font-normal">
+            {brain?.voice?.summary || 'Direct founder builder voice. Focused on signal over noise.'}
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+            {/* Traits */}
+            <div className="space-y-1.5">
+              <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-wider block">
+                Voice Traits
+              </span>
+              <div className="flex flex-wrap gap-1">
+                {(brain?.voice?.traits || ['Direct', 'Practical', 'Analytical']).map((t, idx) => (
+                  <span
+                    key={idx}
+                    className="rounded-lg border border-indigo-500/20 bg-indigo-500/10 px-2.5 py-1 text-xs text-indigo-200 font-mono"
+                  >
+                    {t}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* Sentence Style & Tone */}
+            <div className="space-y-1.5">
+              <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-wider block">
+                Sentence Architecture
+              </span>
+              <p className="text-xs text-neutral-300 leading-relaxed font-mono">
+                {brain?.voice?.sentenceStyle || 'Short, punchy sentences. High signal.'}
+              </p>
+            </div>
+
+            {/* Avoid List */}
+            <div className="space-y-1.5">
+              <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-wider block">
+                Blacklisted Patterns (Avoid)
+              </span>
+              <div className="flex flex-wrap gap-1">
+                {(brain?.voice?.avoid || ['fluff', 'buzzwords']).map((a, idx) => (
+                  <span
+                    key={idx}
+                    className="rounded-lg border border-rose-500/20 bg-rose-500/10 px-2 py-0.5 text-[10px] text-rose-300 font-mono line-through"
+                  >
+                    {a}
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -214,22 +282,22 @@ export function BrandBrainDashboard({
                 return (
                   <div
                     key={rule.id}
-                    className="group rounded-2xl border border-neutral-800/80 bg-neutral-950/60 p-4 backdrop-blur-md hover:border-neutral-700 transition-all space-y-2"
+                    className="group rounded-2xl border border-neutral-800/80 bg-neutral-950/60 p-4 backdrop-blur-md hover:border-neutral-700 transition-all space-y-2.5"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <p className="text-sm font-medium text-neutral-100 leading-snug">
                         {rule.text}
                       </p>
                       <span
-                        className={`rounded-full px-2 py-0.5 text-[10px] font-mono shrink-0 ${
+                        className={`rounded-full px-2.5 py-0.5 text-[10px] font-mono shrink-0 font-medium ${
                           isFeedback
-                            ? 'bg-indigo-500/10 border border-indigo-500/30 text-indigo-300'
+                            ? 'bg-indigo-500/15 border border-indigo-500/30 text-indigo-300'
                             : isSample
-                            ? 'bg-amber-500/10 border border-amber-500/20 text-amber-400'
-                            : 'bg-neutral-800 text-neutral-400'
+                            ? 'bg-amber-500/15 border border-amber-500/30 text-amber-300'
+                            : 'bg-neutral-800 text-neutral-300'
                         }`}
                       >
-                        {isFeedback ? 'feedback loop' : isSample ? 'sample' : 'writing sample'}
+                        source: {isFeedback ? 'real data' : isSample ? 'sample' : 'writing sample'}
                       </span>
                     </div>
 
@@ -277,7 +345,7 @@ export function BrandBrainDashboard({
                   <CheckCircle2 className="h-3.5 w-3.5 text-indigo-400" />
                   Version {currentVersion} (Active)
                 </span>
-                <span className="text-[10px] text-indigo-400">now</span>
+                <span className="text-[10px] text-indigo-400">active</span>
               </div>
               <p className="text-xs text-neutral-300 leading-relaxed line-clamp-2">
                 {brain?.voice?.summary || 'Standard direct founder voice.'}
@@ -287,7 +355,7 @@ export function BrandBrainDashboard({
                 <span>•</span>
                 <span>
                   {brain?.weights?.hook_multipliers
-                    ? `${Object.keys(brain.weights.hook_multipliers).length} weights`
+                    ? `${Object.keys(brain.weights.hook_multipliers).length} hook weights`
                     : 'raw'}
                 </span>
               </div>
@@ -319,7 +387,7 @@ export function BrandBrainDashboard({
                       </p>
                       <div className="flex items-center gap-2 text-[10px] text-neutral-500 font-mono">
                         <span>{hist.rules.length} rules</span>
-                        <span className="text-indigo-400 group-hover:underline">Inspect snapshot →</span>
+                        <span className="text-indigo-400 group-hover:underline">Click to view snapshot →</span>
                       </div>
                     </button>
                   ))}
@@ -340,10 +408,10 @@ export function BrandBrainDashboard({
             <div>
               <h3 className="text-sm font-medium text-white flex items-center gap-2">
                 <Database className="h-4 w-4 text-neutral-400" />
-                Raw Performance Logs ({postedResults.length})
+                Raw Performance Telemetry Logs ({postedResults.length})
               </h3>
               <p className="text-[11px] text-neutral-500 mt-0.5">
-                Every logged post with its hook type, retention, and platform
+                Logged audience metrics used to derive hook & duration multipliers
               </p>
             </div>
           </div>
@@ -359,7 +427,7 @@ export function BrandBrainDashboard({
                   <th className="pb-2">Views</th>
                   <th className="pb-2">Retention</th>
                   <th className="pb-2">Engagement</th>
-                  <th className="pb-2">Type</th>
+                  <th className="pb-2">Source</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-900 text-neutral-300">
@@ -398,9 +466,10 @@ export function BrandBrainDashboard({
       {/* Snapshot Inspector Modal */}
       {selectedHistoryVersion && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="relative w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-950 p-6 space-y-4 text-xs">
+          <div className="relative w-full max-w-lg rounded-2xl border border-neutral-800 bg-neutral-950 p-6 space-y-4 text-xs shadow-2xl">
             <div className="flex items-center justify-between pb-3 border-b border-neutral-800">
-              <h3 className="text-sm font-medium text-white">
+              <h3 className="text-sm font-medium text-white flex items-center gap-2">
+                <History className="h-4 w-4 text-indigo-400" />
                 Snapshot: Version {selectedHistoryVersion}
               </h3>
               <button
@@ -427,9 +496,16 @@ export function BrandBrainDashboard({
                   </div>
                   <div>
                     <span className="text-[10px] font-mono text-neutral-500 uppercase">Rules at this Version ({hist.rules.length})</span>
-                    <ul className="mt-1 space-y-1 text-neutral-300 list-disc list-inside">
+                    <ul className="mt-1 space-y-1.5 text-neutral-300 list-disc list-inside">
                       {hist.rules.map((r) => (
-                        <li key={r.id} className="truncate">{r.text}</li>
+                        <li key={r.id} className="text-neutral-200">
+                          <span className="font-medium">{r.text}</span>
+                          {r.evidence && (
+                            <span className="block text-[10px] text-neutral-500 italic font-mono pl-4">
+                              receipt: {r.evidence}
+                            </span>
+                          )}
+                        </li>
                       ))}
                     </ul>
                   </div>
@@ -439,7 +515,7 @@ export function BrandBrainDashboard({
                         onSelectHistoricalVersion(hist.version);
                         setSelectedHistoryVersion(null);
                       }}
-                      className="w-full rounded-xl bg-white text-black hover:bg-neutral-200 h-9 text-xs font-semibold mt-2"
+                      className="w-full rounded-xl bg-white text-black hover:bg-neutral-200 h-9 text-xs font-semibold mt-3"
                     >
                       Restore Version {hist.version} as Active
                     </Button>
@@ -453,4 +529,3 @@ export function BrandBrainDashboard({
     </div>
   );
 }
-

@@ -286,6 +286,34 @@ export default function Home() {
               reason: `because ${c.hook_type} hooks lift ${hookLift > 0 ? '+' : ''}${hookLift}% (n=${hookCount})`,
             };
           });
+      } else if (postedResults.length > 0) {
+        // Illustrative reordering projection from sample posts
+        const sampleClipsProjection = postedResults.slice(0, 6).map((p, idx) => ({
+          title: p.title,
+          start_sec: 0,
+          end_sec: p.duration_sec,
+          hook_type: p.hook_type,
+          scores: { hook: 80, emotion: 75, standalone_clarity: 80, overall: Math.round(p.score || 75) },
+          reason: 'Audience telemetry projection',
+          trigger_quote: p.title,
+          originalIndex: idx,
+        }));
+        const reranked = rerankClips(sampleClipsProjection as any, data.weights);
+        reorderedClips = reranked
+          .filter((c) => c.rankDelta !== undefined && c.rankDelta !== 0)
+          .map((c) => {
+            const oldRank = (c as any).originalIndex !== undefined ? (c as any).originalIndex + 1 : 1;
+            const newRank = reranked.findIndex((item) => item.title === c.title) + 1;
+            const hookLift = stats.hookStats[c.hook_type]?.lift ?? 0;
+            const hookCount = stats.hookStats[c.hook_type]?.count ?? 0;
+            return {
+              clipId: c.title,
+              title: c.title,
+              oldRank,
+              newRank,
+              reason: `because ${c.hook_type} hooks lift ${hookLift > 0 ? '+' : ''}${hookLift}% (n=${hookCount})`,
+            };
+          });
       }
 
       // Prepare Diff View Data

@@ -72,12 +72,14 @@ export function ClipCard({ clip, videoId, rank, brain, onResultLogged }: ClipCar
         <div className="flex items-center gap-2 rounded-xl border border-neutral-800 bg-neutral-950/80 px-2.5 py-1">
           <Flame className="h-3.5 w-3.5 text-amber-500" />
           <div className="text-right">
-            <span className="font-mono text-sm font-bold text-white">{displayScore}</span>
-            <span className="text-[10px] text-neutral-500 font-mono">/100</span>
-            {hasScoreAdjustment && (
-              <span className="block text-[9px] font-mono text-neutral-400">
-                (raw: {clip.rawOverall})
-              </span>
+            <div className="flex items-baseline justify-end gap-1 font-mono">
+              <span className="text-sm font-bold text-white">{displayScore}</span>
+              <span className="text-[10px] text-neutral-500">/100</span>
+            </div>
+            {clip.rawOverall !== undefined && (
+              <div className="text-[10px] font-mono text-neutral-400">
+                raw: <span className="text-neutral-300 font-medium">{clip.rawOverall}</span> • adj: <span className="text-indigo-300 font-medium">{displayScore}</span>
+              </div>
             )}
           </div>
         </div>
@@ -85,15 +87,17 @@ export function ClipCard({ clip, videoId, rank, brain, onResultLogged }: ClipCar
 
       {/* Brand Brain Rank Adjustment Tag */}
       {hasRankAdjustment && (
-        <div className="mb-3 flex items-center gap-1.5 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-1 text-[11px] text-indigo-300 font-mono">
-          {clip.rankDelta! > 0 ? (
-            <ArrowUp className="h-3.5 w-3.5 text-emerald-400" />
-          ) : (
-            <ArrowDown className="h-3.5 w-3.5 text-rose-400" />
-          )}
-          <span>Brand Brain adjusted this</span>
-          <span className="font-bold text-white">
-            ({clip.rankDelta! > 0 ? `+${clip.rankDelta}` : clip.rankDelta})
+        <div className="mb-3 flex items-center justify-between rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-1 text-[11px] text-indigo-300 font-mono">
+          <div className="flex items-center gap-1.5">
+            {clip.rankDelta! > 0 ? (
+              <ArrowUp className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+            ) : (
+              <ArrowDown className="h-3.5 w-3.5 text-rose-400 shrink-0" />
+            )}
+            <span className="font-medium text-white">Brand Brain adjusted this</span>
+          </div>
+          <span className={`font-bold ${clip.rankDelta! > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+            {clip.rankDelta! > 0 ? `+${clip.rankDelta}` : clip.rankDelta}
           </span>
         </div>
       )}
