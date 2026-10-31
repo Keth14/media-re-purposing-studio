@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI, Type } from '@google/genai';
 import { checkRateLimit, recordRateLimitSuccess } from '@/lib/rate-limiter';
 import { getClipsCacheKey, getCachedClips, setCachedClips } from '@/lib/clips-cache';
+import { getSanitizedApiKey, getGeminiModel } from '@/lib/env';
 import { Clip, HookType } from '@/types';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 // Helper to normalize strings for quote matching (ignoring punctuation, casing, extra whitespace)
 function cleanStringForMatching(str: string): string {
@@ -51,8 +55,8 @@ export async function POST(req: NextRequest) {
     }
 
     // Retrieve API key and Model from environment
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey || apiKey === 'your-gemini-api-key-here' || apiKey.trim() === '') {
+    const apiKey = getSanitizedApiKey(process.env.GEMINI_API_KEY);
+    if (!apiKey) {
       return NextResponse.json(
         {
           success: false,
@@ -63,7 +67,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const modelName = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    const modelName = getGeminiModel();
 
     const ai = new GoogleGenAI({ apiKey });
 
@@ -139,36 +143,57 @@ Extract the 6 best short-form clips adhering strictly to the requirements and JS
     };
 
     let rawClips: any[] = [];
+    const candidateModels = [modelName, 'gemini-3.5-flash', 'gemini-3.1-flash-lite'].filter(
+      (m, idx, arr) => arr.indexOf(m) === idx
+    );
 
-    try {
-      const response = await ai.models.generateContent({
-        model: modelName,
-        contents: [
-          { role: 'user', parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }] },
-        ],
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: responseSchema,
-          temperature: 0.2,
-        },
-      });
+    let responseText = '';
+    let lastError: unknown = null;
 
-      const responseText = response.text?.trim() || '[]';
-      rawClips = JSON.parse(responseText);
-      if (!Array.isArray(rawClips) && typeof rawClips === 'object' && rawClips !== null) {
-        // In case it wrapped the array in a key like { clips: [...] }
-        const potentialArray = Object.values(rawClips).find((v) => Array.isArray(v));
-        if (potentialArray) rawClips = potentialArray as any[];
+    for (const m of candidateModels) {
+      try {
+        const response = await ai.models.generateContent({
+          model: m,
+          contents: [
+            { role: 'user', parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }] },
+          ],
+          config: {
+            responseMimeType: 'application/json',
+            responseSchema: responseSchema,
+            temperature: 0.2,
+          },
+        });
+        responseText = response.text?.trim() || '';
+        if (responseText) break;
+      } catch (err: unknown) {
+        lastError = err;
+        console.warn(`Model ${m} failed or busy, checking alternative model...`, err);
       }
-    } catch (genError: unknown) {
-      console.error('Gemini API Error:', genError);
-      const message = genError instanceof Error ? genError.message : 'Error communicating with Gemini model.';
+    }
+
+    if (!responseText) {
+      console.error('All candidate Gemini models failed:', lastError);
+      const message = lastError instanceof Error ? lastError.message : 'Error communicating with Gemini model.';
       return NextResponse.json(
         {
           success: false,
           error: `Gemini AI Error: ${message}`,
         },
         { status: 502 }
+      );
+    }
+
+    try {
+      rawClips = JSON.parse(responseText);
+      if (!Array.isArray(rawClips) && typeof rawClips === 'object' && rawClips !== null) {
+        // In case it wrapped the array in a key like { clips: [...] }
+        const potentialArray = Object.values(rawClips).find((v) => Array.isArray(v));
+        if (potentialArray) rawClips = potentialArray as any[];
+      }
+    } catch {
+      return NextResponse.json(
+        { success: false, error: 'Failed to parse clips JSON from Gemini model output.' },
+        { status: 500 }
       );
     }
 
