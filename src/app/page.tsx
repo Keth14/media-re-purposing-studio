@@ -17,6 +17,8 @@ import {
   Layers,
   Database,
   TrendingUp,
+  Play,
+  RotateCcw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ClipCard } from '@/components/ClipCard';
@@ -37,6 +39,12 @@ import { getBrain, saveBrain, restoreBrainVersion } from '@/lib/brain';
 import { getPostedResults } from '@/lib/tracker';
 import { computeStats } from '@/lib/stats';
 import { rerankClips } from '@/lib/rerank';
+import {
+  DEMO_SAMPLE_CLIPS,
+  DEMO_SAMPLE_VIDEO_ID,
+  DEMO_SAMPLE_TRANSCRIPT,
+  DEMO_SAMPLE_TOTAL_DURATION,
+} from '@/lib/demo-sample';
 
 type TabType = 'youtube' | 'paste';
 type ViewMode = 'clips' | 'brain';
@@ -177,6 +185,17 @@ export default function Home() {
     } finally {
       isSubmittingRef.current = false;
     }
+  };
+
+  // Instant Demo: Try Sample Video (Strangers see results in 2 seconds with no key or transcript)
+  const handleTrySampleVideo = () => {
+    setError(null);
+    setFallbackNotice(null);
+    setVideoId(DEMO_SAMPLE_VIDEO_ID);
+    setTranscriptPreview(DEMO_SAMPLE_TRANSCRIPT);
+    setFromCache(true);
+    const reranked = rerankClips(DEMO_SAMPLE_CLIPS, brain?.weights);
+    setClips(reranked);
   };
 
   // Feedback Loop: Learn & Update Brand Brain from Performance Stats
@@ -364,30 +383,35 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-black text-neutral-100 flex flex-col items-center">
-      {/* Background Glow */}
-      <div className="pointer-events-none fixed inset-0 flex items-center justify-center opacity-40">
-        <div className="h-[600px] w-[600px] rounded-full bg-gradient-to-tr from-violet-600/10 via-indigo-600/10 to-transparent blur-3xl" />
+    <div className="studio-grain min-h-screen bg-[#070709] text-neutral-100 flex flex-col items-center overflow-x-hidden selection:bg-indigo-500/30 selection:text-white">
+      {/* Background Studio Glow */}
+      <div className="pointer-events-none fixed inset-0 flex items-center justify-center opacity-30">
+        <div className="h-[600px] w-[600px] rounded-full bg-gradient-to-tr from-indigo-600/15 via-violet-600/10 to-transparent blur-3xl" />
       </div>
 
-      <div className="relative z-10 w-full max-w-6xl px-4 sm:px-6 py-10 flex flex-col items-center space-y-8">
-        {/* Navigation Bar / Mode Toggle */}
-        <div className="w-full flex items-center justify-between border-b border-neutral-900 pb-5">
+      <div className="relative z-10 w-full max-w-6xl px-4 sm:px-6 py-8 flex flex-col items-center space-y-8">
+        {/* Navigation Bar / Mode Toggle & Brand Brain Header Badge */}
+        <div className="w-full flex items-center justify-between border-b border-neutral-900/80 pb-5">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-800 bg-neutral-900">
-              <Brain className="h-4 w-4 text-indigo-400" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-2xl border border-indigo-500/30 bg-indigo-500/10 shadow-lg shadow-indigo-500/10">
+              <Brain className="h-5 w-5 text-indigo-400" />
             </div>
-            <span className="font-light text-base tracking-tight text-white hidden sm:inline">
-              Brand Brain Studio
-            </span>
+            <div>
+              <span className="font-light text-base tracking-tight text-white block">
+                BrandBrain <span className="font-normal text-transparent bg-clip-text bg-gradient-to-r from-neutral-200 to-neutral-400">Studio</span>
+              </span>
+              <span className="text-[10px] text-neutral-500 font-mono hidden sm:block">
+                Video Repurposing Engine
+              </span>
+            </div>
           </div>
 
           {/* View Mode Toggle Pill */}
-          <div className="flex rounded-xl bg-neutral-950 p-1 border border-neutral-800/80">
+          <div className="flex rounded-xl bg-neutral-950 p-1 border border-neutral-800/80 backdrop-blur-md">
             <button
               type="button"
               onClick={() => setActiveView('clips')}
-              className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-medium transition-all ${
+              className={`flex items-center gap-1.5 rounded-lg px-3.5 sm:px-4 py-1.5 text-xs font-medium transition-all ${
                 activeView === 'clips'
                   ? 'bg-neutral-800 text-white shadow-sm'
                   : 'text-neutral-400 hover:text-white'
@@ -399,37 +423,49 @@ export default function Home() {
             <button
               type="button"
               onClick={() => setActiveView('brain')}
-              className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-medium transition-all ${
+              className={`flex items-center gap-1.5 rounded-lg px-3.5 sm:px-4 py-1.5 text-xs font-medium transition-all ${
                 activeView === 'brain'
                   ? 'bg-indigo-600 text-white shadow-sm'
                   : 'text-neutral-400 hover:text-white'
               }`}
             >
               <TrendingUp className="h-3.5 w-3.5" />
-              <span>Brand Brain Intelligence</span>
-              {brain && (
-                <span className="rounded bg-indigo-900/60 text-[10px] px-1 font-mono">
-                  v{brain.version}
+              <span>Brand Brain</span>
+            </button>
+          </div>
+
+          {/* Right: Pulsing Brand Brain Header Badge & Voice Panel Trigger */}
+          <div className="flex items-center gap-2">
+            {/* Brand Brain header badge: a pulsing dot and current version, click opens the Brain */}
+            <button
+              type="button"
+              onClick={() => setActiveView('brain')}
+              className="group relative flex items-center gap-2 rounded-full border border-indigo-500/30 bg-indigo-950/30 px-3 py-1.5 text-xs font-mono text-neutral-200 backdrop-blur-md hover:border-indigo-500/60 transition-all hover:shadow-lg hover:shadow-indigo-500/10 cursor-pointer"
+              title="Click to view Brand Brain Intelligence Core"
+            >
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
+              </span>
+              <span className="text-neutral-400 group-hover:text-neutral-200 text-[11px] hidden md:inline">Brain</span>
+              <span className="font-bold text-white">v{brain?.version || 1}</span>
+            </button>
+
+            {/* Brand Voice Shortcut Trigger */}
+            <button
+              type="button"
+              onClick={() => setIsVoicePanelOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-neutral-800 bg-neutral-900/80 px-2.5 sm:px-3 py-1.5 text-xs text-neutral-300 hover:border-neutral-700 hover:bg-neutral-900 transition-all font-mono"
+            >
+              <Sparkles className="h-3.5 w-3.5 text-indigo-400" />
+              <span className="hidden md:inline">Voice</span>
+              {brain?.isSample && (
+                <span className="rounded bg-amber-500/20 text-amber-300 px-1 py-0.2 text-[9px]">
+                  sample
                 </span>
               )}
             </button>
           </div>
-
-          {/* Brand Voice Shortcut Trigger */}
-          <button
-            type="button"
-            onClick={() => setIsVoicePanelOpen(true)}
-            className="inline-flex items-center gap-2 rounded-xl border border-neutral-800 bg-neutral-900/80 px-3 py-1.5 text-xs text-neutral-300 hover:border-neutral-700 hover:bg-neutral-900 transition-all font-mono"
-          >
-            <Sparkles className="h-3.5 w-3.5 text-indigo-400" />
-            <span className="hidden md:inline">Voice:</span>
-            <span className="text-white font-bold">v{brain?.version || 1}</span>
-            {brain?.isSample && (
-              <span className="rounded bg-amber-500/20 text-amber-300 px-1 py-0.2 text-[9px]">
-                sample
-              </span>
-            )}
-          </button>
         </div>
 
         {/* Global Error Alert */}
@@ -439,7 +475,7 @@ export default function Home() {
               initial={{ opacity: 0, y: -6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
-              className="w-full flex items-start gap-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-xs text-rose-300"
+              className="w-full flex items-start gap-3 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-xs text-rose-300 backdrop-blur-md"
             >
               <AlertCircle className="h-4 w-4 shrink-0 text-rose-400 mt-0.5" />
               <div className="space-y-1">
@@ -452,22 +488,44 @@ export default function Home() {
 
         {/* VIEW 1: CLIPS STUDIO */}
         {activeView === 'clips' && (
-          <div className="w-full flex flex-col items-center space-y-8">
-            {/* Header */}
-            <header className="text-center space-y-4 max-w-2xl">
-              <h1 className="text-4xl sm:text-5xl font-light tracking-tight text-white">
+          <div className="w-full flex flex-col items-center space-y-10">
+            {/* Hero Header with Animated Gradient Glow & 3-Step Strip */}
+            <header className="relative text-center space-y-6 max-w-3xl pt-2">
+              {/* Animated Gradient Glow behind the headline */}
+              <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[320px] sm:w-[580px] h-[180px] sm:h-[260px] bg-gradient-to-tr from-indigo-600/25 via-violet-600/15 to-transparent blur-3xl rounded-full" />
+
+              <h1 className="relative text-4xl sm:text-6xl font-light tracking-tight text-white leading-tight">
                 Transform Long Videos into{' '}
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-neutral-100 via-neutral-300 to-neutral-500 font-normal">
-                  Viral Clips
+                <span className="font-normal text-transparent bg-clip-text bg-gradient-to-r from-white via-neutral-200 to-neutral-400">
+                  Viral Short Clips
                 </span>
               </h1>
-              <p className="text-sm sm:text-base text-neutral-400 font-normal leading-relaxed">
-                Ingest transcripts, rank by retention lift weights, generate platform copy in your voice, and log performance results.
+
+              <p className="relative text-sm sm:text-base text-neutral-400 font-normal leading-relaxed max-w-xl mx-auto">
+                Extract high-retention moments, enforce your authentic brand voice, and learn from real post telemetry.
               </p>
+
+              {/* Three-step strip: Paste -> Clips -> Learn */}
+              <div className="relative inline-flex items-center gap-2 sm:gap-4 rounded-2xl border border-neutral-800/90 bg-neutral-950/80 px-4 py-2 text-xs font-mono text-neutral-300 shadow-xl backdrop-blur-md">
+                <div className="flex items-center gap-1.5 text-neutral-200 font-medium">
+                  <span className="h-5 w-5 rounded-full bg-neutral-800 flex items-center justify-center text-[10px] text-neutral-400 font-bold">1</span>
+                  <span>Paste</span>
+                </div>
+                <ArrowRight className="h-3 w-3 text-neutral-600" />
+                <div className="flex items-center gap-1.5 text-neutral-200 font-medium">
+                  <span className="h-5 w-5 rounded-full bg-neutral-800 flex items-center justify-center text-[10px] text-neutral-400 font-bold">2</span>
+                  <span>Clips</span>
+                </div>
+                <ArrowRight className="h-3 w-3 text-neutral-600" />
+                <div className="flex items-center gap-1.5 text-indigo-300 font-medium">
+                  <span className="h-5 w-5 rounded-full bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-[10px] text-indigo-300 font-bold">3</span>
+                  <span>Learn</span>
+                </div>
+              </div>
             </header>
 
             {/* Ingest Card */}
-            <div className="w-full max-w-3xl rounded-2xl border border-neutral-800 bg-neutral-950/70 p-6 sm:p-8 backdrop-blur-xl shadow-2xl shadow-black/80 space-y-6">
+            <div className="w-full max-w-3xl rounded-3xl border border-neutral-800/80 bg-neutral-950/70 p-6 sm:p-8 backdrop-blur-xl shadow-2xl shadow-black/80 space-y-6">
               {/* Tabs */}
               <div className="flex rounded-xl bg-neutral-900/80 p-1 border border-neutral-800/80">
                 <button
@@ -572,12 +630,12 @@ export default function Home() {
                 </div>
               )}
 
-              {/* Find Clips Button */}
-              <div className="pt-2">
+              {/* Action Buttons: Find Clips + Try Sample Video Button */}
+              <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
                 <Button
                   onClick={handleFindClips}
                   disabled={Boolean(loadingStep)}
-                  className="w-full rounded-xl bg-white text-black hover:bg-neutral-200 h-12 text-sm font-semibold tracking-wide transition-all shadow-lg shadow-white/5 disabled:opacity-50 disabled:pointer-events-none disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="flex-1 w-full rounded-xl bg-white text-black hover:bg-neutral-200 h-12 text-sm font-semibold tracking-wide transition-all shadow-lg shadow-white/5 disabled:opacity-50 disabled:pointer-events-none disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {loadingStep ? (
                     <>
@@ -591,6 +649,22 @@ export default function Home() {
                       <ArrowRight className="h-4 w-4 text-black ml-1" />
                     </>
                   )}
+                </Button>
+
+                {/* "Try sample video" button: loads cached clips instantly so strangers see results in 2s with no key or transcript */}
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleTrySampleVideo}
+                  disabled={Boolean(loadingStep)}
+                  className="w-full sm:w-auto rounded-xl border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 hover:text-white h-12 px-5 text-xs text-neutral-300 font-mono transition-all flex items-center justify-center gap-2 shrink-0 shadow-sm"
+                  title="Instantly preview 6 scored clips with no API key or transcript required"
+                >
+                  <Play className="h-3.5 w-3.5 text-indigo-400" />
+                  <span>Try sample video</span>
+                  <span className="rounded bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 px-1.5 py-0.2 text-[9px]">
+                    instant
+                  </span>
                 </Button>
               </div>
             </div>
@@ -617,7 +691,7 @@ export default function Home() {
                         Cached
                       </span>
                     )}
-                    <div className="inline-flex items-center gap-2 rounded-full border border-neutral-800 bg-neutral-900 px-3 py-1 text-xs text-neutral-300">
+                    <div className="inline-flex items-center gap-2 rounded-full border border-neutral-800 bg-neutral-900 px-3 py-1 text-xs text-neutral-300 font-mono">
                       <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
                       <span>{clips.length} clips ready</span>
                     </div>
@@ -636,34 +710,54 @@ export default function Home() {
 
               {/* Empty State */}
               {!loadingStep && clips.length === 0 && !error && (
-                <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-neutral-800/80 bg-neutral-950/30 py-20 px-6 text-center">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-neutral-800 bg-neutral-900/60 mb-4">
-                    <Flame className="h-6 w-6 text-neutral-600" />
+                <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-neutral-800/80 bg-neutral-950/40 py-20 px-6 text-center space-y-4">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-neutral-800 bg-neutral-900/60 shadow-lg">
+                    <Flame className="h-6 w-6 text-neutral-500" />
                   </div>
-                  <h3 className="text-base font-medium text-neutral-300 mb-1">
-                    No clips generated yet
-                  </h3>
-                  <p className="text-xs text-neutral-500 max-w-sm leading-relaxed">
-                    Enter a YouTube URL or paste transcript above and click &ldquo;Find clips&rdquo; to extract the best short-form segments.
-                  </p>
+                  <div className="space-y-1">
+                    <h3 className="text-base font-medium text-neutral-200">
+                      No clips extracted yet
+                    </h3>
+                    <p className="text-xs text-neutral-500 max-w-sm leading-relaxed mx-auto">
+                      Enter a YouTube URL above or click &ldquo;Try sample video&rdquo; to test instant short-form extraction.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleTrySampleVideo}
+                    className="rounded-xl border-neutral-800 bg-neutral-900 text-xs text-neutral-300 hover:text-white"
+                  >
+                    <Play className="mr-1.5 h-3.5 w-3.5 text-indigo-400" />
+                    Load Sample Clips
+                  </Button>
                 </div>
               )}
 
-              {/* Render Clips */}
+              {/* Render Clips with Stagger-in and Reorder Animation */}
               {!loadingStep && clips.length > 0 && (
                 <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.4 }}
+                  variants={{
+                    hidden: { opacity: 0 },
+                    visible: {
+                      opacity: 1,
+                      transition: {
+                        staggerChildren: 0.08,
+                      },
+                    },
+                  }}
+                  initial="hidden"
+                  animate="visible"
                   className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
                 >
                   {clips.map((clip, idx) => (
                     <ClipCard
-                      key={`${clip.start_sec}-${clip.end_sec}-${idx}`}
+                      key={`${clip.id || clip.title}-${idx}`}
                       clip={clip}
                       videoId={videoId}
                       rank={idx + 1}
                       brain={brain}
+                      totalDuration={DEMO_SAMPLE_TOTAL_DURATION}
                       onResultLogged={handleRefreshResults}
                     />
                   ))}
@@ -672,10 +766,10 @@ export default function Home() {
 
               {/* Transcript Drawer / Preview */}
               {transcriptPreview && (
-                <div className="mt-12 rounded-2xl border border-neutral-900 bg-neutral-950/40 p-5 space-y-3">
+                <div className="mt-12 rounded-3xl border border-neutral-900 bg-neutral-950/40 p-5 space-y-3">
                   <div className="flex items-center justify-between text-xs text-neutral-400 font-mono">
-                    <span className="flex items-center gap-2">
-                      <FileText className="h-3.5 w-3.5 text-neutral-500" />
+                    <span className="flex items-center gap-2 text-neutral-300">
+                      <FileText className="h-3.5 w-3.5 text-indigo-400" />
                       Normalized Timestamped Transcript
                     </span>
                     <span>~20s segment lines</span>
@@ -702,6 +796,16 @@ export default function Home() {
             onSelectHistoricalVersion={handleHistoricalRestore}
           />
         )}
+
+        {/* Video Studio Footer */}
+        <footer className="w-full mt-24 border-t border-neutral-900/80 py-8 text-center space-y-2">
+          <p className="text-xs text-neutral-400 font-mono tracking-wide">
+            Sample data is labeled. Real results come from your posts.
+          </p>
+          <p className="text-[11px] text-neutral-600 font-mono">
+            Brand Brain Studio • Algorithmic Video Repurposing & Voice Engine
+          </p>
+        </footer>
       </div>
 
       {/* Brand Voice Side Panel Drawer */}

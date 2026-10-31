@@ -31,3 +31,4 @@ export function setCachedFidelity(key: string, result: VoiceFidelityResult): voi
 export function clearFidelityCache(): void {
   fidelityCache.clear();
 }
+

@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
+import { motion } from 'framer-motion';
 import { Clip, HookType, BrainState } from '@/types';
 import { ScoreBar } from './ScoreBar';
 import { PlatformCopySection } from './PlatformCopySection';
 import { LogResultModal } from './LogResultModal';
 import { formatTimestamp } from '@/lib/youtube';
 import { Quote, Flame, Clock, Sparkles, ArrowUp, ArrowDown, PlusCircle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 
 interface ClipCardProps {
   clip: Clip;
@@ -13,6 +13,7 @@ interface ClipCardProps {
   rank: number;
   brain?: BrainState | null;
   onResultLogged?: () => void;
+  totalDuration?: number;
 }
 
 const HOOK_BADGE_STYLES: Record<HookType, { bg: string; text: string; border: string }> = {
@@ -43,21 +44,38 @@ const HOOK_BADGE_STYLES: Record<HookType, { bg: string; text: string; border: st
   },
 };
 
-export function ClipCard({ clip, videoId, rank, brain, onResultLogged }: ClipCardProps) {
+export function ClipCard({ clip, videoId, rank, brain, onResultLogged, totalDuration: propTotalDuration }: ClipCardProps) {
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
   const duration = Math.max(1, clip.end_sec - clip.start_sec);
   const hookStyle = HOOK_BADGE_STYLES[clip.hook_type] || HOOK_BADGE_STYLES['bold claim'];
 
   const displayScore = clip.adjustedOverall ?? clip.scores.overall;
-  const hasScoreAdjustment = clip.rawOverall !== undefined && clip.adjustedOverall !== undefined && clip.adjustedOverall !== clip.rawOverall;
   const hasRankAdjustment = clip.rankDelta !== undefined && clip.rankDelta !== 0;
 
+  const totalDuration =
+    propTotalDuration ||
+    clip.totalVideoDuration ||
+    (clip.end_sec > 300 ? clip.end_sec + 60 : 360);
+
+  const startPercent = Math.min(95, Math.max(0, (clip.start_sec / totalDuration) * 100));
+  const widthPercent = Math.max(4, Math.min(100 - startPercent, (duration / totalDuration) * 100));
+
   return (
-    <div className="group relative flex flex-col rounded-2xl border border-neutral-800/80 bg-neutral-900/40 p-5 backdrop-blur-md transition-all duration-300 hover:border-neutral-700 hover:bg-neutral-900/70 hover:shadow-2xl hover:shadow-black/60">
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      transition={{
+        layout: { type: 'spring', stiffness: 320, damping: 28 },
+        opacity: { duration: 0.3 },
+      }}
+      className="group relative flex flex-col rounded-3xl border border-neutral-800/80 bg-neutral-950/70 p-5 backdrop-blur-xl shadow-2xl shadow-black/80 transition-all duration-300 hover:border-neutral-700 hover:bg-neutral-950/90"
+    >
       {/* Top Bar: Rank & Overall Score */}
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3.5 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-neutral-800 text-xs font-mono font-medium text-neutral-300">
+          <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-neutral-900 border border-neutral-800 text-xs font-mono font-bold text-neutral-200">
             #{rank}
           </span>
           <span
@@ -69,8 +87,8 @@ export function ClipCard({ clip, videoId, rank, brain, onResultLogged }: ClipCar
         </div>
 
         {/* Score Ring */}
-        <div className="flex items-center gap-2 rounded-xl border border-neutral-800 bg-neutral-950/80 px-2.5 py-1">
-          <Flame className="h-3.5 w-3.5 text-amber-500" />
+        <div className="flex items-center gap-2 rounded-xl border border-neutral-800/90 bg-neutral-900/60 px-3 py-1.5 backdrop-blur-md">
+          <Flame className="h-4 w-4 text-amber-500" />
           <div className="text-right">
             <div className="flex items-baseline justify-end gap-1 font-mono">
               <span className="text-sm font-bold text-white">{displayScore}</span>
@@ -78,7 +96,8 @@ export function ClipCard({ clip, videoId, rank, brain, onResultLogged }: ClipCar
             </div>
             {clip.rawOverall !== undefined && (
               <div className="text-[10px] font-mono text-neutral-400">
-                raw: <span className="text-neutral-300 font-medium">{clip.rawOverall}</span> • adj: <span className="text-indigo-300 font-medium">{displayScore}</span>
+                raw: <span className="text-neutral-300 font-medium">{clip.rawOverall}</span> • adj:{' '}
+                <span className="text-indigo-400 font-medium">{displayScore}</span>
               </div>
             )}
           </div>
@@ -87,7 +106,7 @@ export function ClipCard({ clip, videoId, rank, brain, onResultLogged }: ClipCar
 
       {/* Brand Brain Rank Adjustment Tag */}
       {hasRankAdjustment && (
-        <div className="mb-3 flex items-center justify-between rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-1 text-[11px] text-indigo-300 font-mono">
+        <div className="mb-3.5 flex items-center justify-between rounded-xl border border-indigo-500/30 bg-indigo-500/10 px-3 py-1.5 text-xs text-indigo-300 font-mono">
           <div className="flex items-center gap-1.5">
             {clip.rankDelta! > 0 ? (
               <ArrowUp className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
@@ -97,13 +116,14 @@ export function ClipCard({ clip, videoId, rank, brain, onResultLogged }: ClipCar
             <span className="font-medium text-white">Brand Brain adjusted this</span>
           </div>
           <span className={`font-bold ${clip.rankDelta! > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-            {clip.rankDelta! > 0 ? `+${clip.rankDelta}` : clip.rankDelta}
+            {clip.rankDelta! > 0 ? `+${clip.rankDelta}` : clip.rankDelta}{' '}
+            {clip.rankDelta! > 0 ? 'spots up' : 'spots down'}
           </span>
         </div>
       )}
 
       {/* Video Player or Audio/Time Placeholder */}
-      <div className="relative mb-4 overflow-hidden rounded-xl border border-neutral-800/80 bg-neutral-950 aspect-video shadow-inner">
+      <div className="relative mb-3.5 overflow-hidden rounded-2xl border border-neutral-800/80 bg-neutral-950 aspect-video shadow-inner">
         {videoId ? (
           <iframe
             src={`https://www.youtube.com/embed/${videoId}?start=${clip.start_sec}&end=${clip.end_sec}`}
@@ -125,6 +145,30 @@ export function ClipCard({ clip, videoId, rank, brain, onResultLogged }: ClipCar
         )}
       </div>
 
+      {/* Full Video Timeline Placement Track */}
+      <div className="mb-4 rounded-xl border border-neutral-800/60 bg-neutral-900/40 p-2.5 space-y-1.5">
+        <div className="flex items-center justify-between text-[10px] font-mono text-neutral-400">
+          <span className="flex items-center gap-1.5 text-neutral-300">
+            <Clock className="h-3 w-3 text-indigo-400" />
+            Timeline Placement
+          </span>
+          <span>
+            {formatTimestamp(clip.start_sec)} - {formatTimestamp(clip.end_sec)}
+            <span className="text-neutral-600"> / </span>
+            {formatTimestamp(totalDuration)}
+          </span>
+        </div>
+        <div className="relative h-1.5 w-full rounded-full bg-neutral-800/80 overflow-hidden">
+          <div
+            className="absolute top-0 bottom-0 rounded-full bg-indigo-500 shadow-sm shadow-indigo-500/50"
+            style={{
+              left: `${startPercent}%`,
+              width: `${widthPercent}%`,
+            }}
+          />
+        </div>
+      </div>
+
       {/* Timestamp Pill & Title */}
       <div className="mb-3 space-y-1.5">
         <div className="flex items-center justify-between">
@@ -140,7 +184,7 @@ export function ClipCard({ clip, videoId, rank, brain, onResultLogged }: ClipCar
           <button
             type="button"
             onClick={() => setIsLogModalOpen(true)}
-            className="inline-flex items-center gap-1 rounded-md border border-neutral-800 bg-neutral-900/60 px-2 py-0.5 text-[10px] text-neutral-400 hover:text-white hover:border-neutral-700 transition-colors font-mono"
+            className="inline-flex items-center gap-1 rounded-lg border border-neutral-800 bg-neutral-900/80 px-2 py-1 text-[10px] text-neutral-300 hover:text-white hover:border-neutral-700 transition-colors font-mono"
           >
             <PlusCircle className="h-3 w-3 text-indigo-400" />
             Log result
@@ -158,9 +202,9 @@ export function ClipCard({ clip, videoId, rank, brain, onResultLogged }: ClipCar
       </p>
 
       {/* Trigger Quote Highlight */}
-      <div className="mb-5 rounded-xl border border-neutral-800/90 bg-neutral-950/60 p-3.5 relative overflow-hidden">
+      <div className="mb-5 rounded-2xl border border-neutral-800/90 bg-neutral-950/70 p-3.5 relative overflow-hidden">
         <Quote className="absolute right-2 top-2 h-6 w-6 text-neutral-800/50 pointer-events-none" />
-        <p className="text-[11px] font-mono uppercase tracking-wider text-neutral-500 mb-1">
+        <p className="text-[10px] font-mono uppercase tracking-wider text-neutral-500 mb-1">
           Trigger Quote
         </p>
         <p className="text-xs italic text-neutral-200 leading-snug">
@@ -168,7 +212,7 @@ export function ClipCard({ clip, videoId, rank, brain, onResultLogged }: ClipCar
         </p>
       </div>
 
-      {/* 3 Score Bars */}
+      {/* 3 Animated Score Bars */}
       <div className="space-y-2.5 pt-3 border-t border-neutral-800/60">
         <ScoreBar
           label="Hook Strength"
@@ -204,6 +248,6 @@ export function ClipCard({ clip, videoId, rank, brain, onResultLogged }: ClipCar
           if (onResultLogged) onResultLogged();
         }}
       />
-    </div>
+    </motion.div>
   );
 }

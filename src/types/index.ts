@@ -29,6 +29,7 @@ export interface Clip {
   adjustedOverall?: number;
   rankDelta?: number;
   adjustmentReason?: string;
+  totalVideoDuration?: number;
 }
 
 export interface IngestResponse {

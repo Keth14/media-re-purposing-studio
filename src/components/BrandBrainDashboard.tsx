@@ -411,7 +411,29 @@ export function BrandBrainDashboard({
       </div>
 
       {/* Posted Results Table / Logged Telemetry */}
-      {postedResults.length > 0 && (
+      {postedResults.length === 0 ? (
+        <div className="rounded-3xl border border-dashed border-neutral-800/80 bg-neutral-950/40 p-8 text-center space-y-3">
+          <div className="h-10 w-10 rounded-2xl bg-neutral-900 border border-neutral-800 mx-auto flex items-center justify-center">
+            <Database className="h-5 w-5 text-neutral-500" />
+          </div>
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-neutral-300">No Audience Telemetry Logged Yet</p>
+            <p className="text-xs text-neutral-500 max-w-sm mx-auto leading-relaxed">
+              Click &ldquo;Load sample results&rdquo; above or log performance results on clip cards to begin training your Brand Brain.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleLoadSamples}
+            className="rounded-xl border-neutral-800 bg-neutral-900/80 text-xs text-neutral-300 hover:text-white"
+          >
+            <Database className="mr-1.5 h-3.5 w-3.5 text-indigo-400" />
+            Load 12 Sample Results
+          </Button>
+        </div>
+      ) : (
         <div className="rounded-2xl border border-neutral-800 bg-neutral-950/60 p-6 space-y-4">
           <div className="flex items-center justify-between border-b border-neutral-900 pb-3">
             <div>
