@@ -60,6 +60,15 @@ export function clearPostedResults(): void {
   }
 }
 
+export function savePostedResultsRaw(results: PostedResult[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(TRACKER_STORAGE_KEY, JSON.stringify(results));
+  } catch (err) {
+    console.error('Failed to save posted results raw:', err);
+  }
+}
+
 /**
  * 12 realistic fake results showing clear, measurable patterns:
  * - Question and Contrarian hooks beat Story hooks by a massive margin

@@ -589,20 +589,28 @@ export default function Home() {
 
           {/* Right: Pulsing Brand Brain Header Badge & Voice Panel Trigger */}
           <div className="flex items-center gap-2">
-            {/* Brand Brain header badge: a pulsing dot and current version, click opens the Brain */}
-            <button
-              type="button"
-              onClick={() => setActiveView('brain')}
-              className="group relative flex items-center gap-2 rounded-full border border-indigo-500/30 bg-indigo-950/30 px-3 py-1.5 text-xs font-mono text-neutral-200 backdrop-blur-md hover:border-indigo-500/60 transition-all hover:shadow-lg hover:shadow-indigo-500/10 cursor-pointer"
-              title="Click to view Brand Brain Intelligence Core"
-            >
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
-              </span>
-              <span className="text-neutral-400 group-hover:text-neutral-200 text-[11px] hidden md:inline">Brain</span>
-              <span className="font-bold text-white">v{brain?.version || 1}</span>
-            </button>
+            {/* Brand Brain header badge: a pulsing dot and current version with honest memory tooltip */}
+            <div className="relative group">
+              <button
+                type="button"
+                onClick={() => setActiveView('brain')}
+                className="flex items-center gap-2 rounded-full border border-indigo-500/30 bg-indigo-950/30 px-3 py-1.5 text-xs font-mono text-neutral-200 backdrop-blur-md hover:border-indigo-500/60 transition-all hover:shadow-lg hover:shadow-indigo-500/10 cursor-pointer"
+                title="Memory is saved in this browser. Export it to keep or move it."
+              >
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
+                </span>
+                <span className="text-neutral-400 group-hover:text-neutral-200 text-[11px] hidden md:inline">Brain</span>
+                <span className="font-bold text-white">v{brain?.version || 1}</span>
+              </button>
+
+              {/* Honest Note Tooltip */}
+              <div className="pointer-events-none absolute top-full right-0 sm:left-1/2 sm:-translate-x-1/2 mt-2 w-56 rounded-xl border border-neutral-800 bg-neutral-900/95 p-2.5 text-center text-[10px] font-sans text-neutral-300 shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-50 backdrop-blur-md">
+                <span className="text-indigo-400 font-mono font-medium mr-1">Note:</span>
+                Memory is saved in this browser. Export it to keep or move it.
+              </div>
+            </div>
 
             {/* Brand Voice Shortcut Trigger */}
             <button
@@ -1057,6 +1065,12 @@ export default function Home() {
             postedResults={postedResults}
             onResultsUpdated={(newResults) => {
               setPostedResults(newResults);
+            }}
+            onBrainUpdated={(newBrain) => {
+              setBrain(newBrain);
+              if (clips.length > 0 && newBrain?.weights) {
+                setClips(rerankClips(clips, newBrain.weights));
+              }
             }}
             onUpdateBrain={handleUpdateBrainFromResults}
             isUpdatingBrain={isUpdatingBrain}

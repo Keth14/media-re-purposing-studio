@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -34,16 +34,32 @@ import {
   Tag,
   Volume2,
   Hash,
+  Download,
+  Upload,
+  AlertCircle,
+  RotateCcw,
 } from 'lucide-react';
 import { BrainState, BrainRule, PostedResult, ComputedStats } from '@/types';
 import { computeStats } from '@/lib/stats';
-import { loadSampleResults, clearPostedResults } from '@/lib/tracker';
+import {
+  loadSampleResults,
+  clearPostedResults,
+  savePostedResultsRaw,
+} from '@/lib/tracker';
+import {
+  exportBrain,
+  validateBrainShape,
+  loadDemoBrain,
+  setBrainRaw,
+  clearBrain,
+} from '@/lib/brain';
 import { Button } from '@/components/ui/button';
 
 interface BrandBrainDashboardProps {
   brain: BrainState | null;
   postedResults: PostedResult[];
   onResultsUpdated: (results: PostedResult[]) => void;
+  onBrainUpdated?: (brain: BrainState) => void;
   onUpdateBrain: () => void;
   isUpdatingBrain: boolean;
   onSelectHistoricalVersion?: (version: number) => void;
@@ -53,25 +69,136 @@ export function BrandBrainDashboard({
   brain,
   postedResults,
   onResultsUpdated,
+  onBrainUpdated,
   onUpdateBrain,
   isUpdatingBrain,
   onSelectHistoricalVersion,
 }: BrandBrainDashboardProps) {
   const stats: ComputedStats = computeStats(postedResults);
   const [selectedHistoryVersion, setSelectedHistoryVersion] = useState<number | null>(null);
+  const [alertMessage, setAlertMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const showAlert = (type: 'success' | 'error', text: string) => {
+    setAlertMessage({ type, text });
+    setTimeout(() => {
+      setAlertMessage((prev) => (prev?.text === text ? null : prev));
+    }, 5000);
+  };
 
   const handleLoadSamples = () => {
     const loaded = loadSampleResults();
     onResultsUpdated(loaded);
+    showAlert('success', 'Loaded 12 realistic sample results (labeled sample).');
   };
 
   const handleClearResults = () => {
     clearPostedResults();
     onResultsUpdated([]);
+    showAlert('success', 'Cleared all logged performance results.');
+  };
+
+  const handleExport = () => {
+    try {
+      exportBrain(brain, postedResults);
+      showAlert(
+        'success',
+        `Exported brain.json (v${brain?.version || 1} with ${brain?.rules?.length || 0} rules and ${postedResults.length} results).`
+      );
+    } catch (err) {
+      console.error('Failed to export brain:', err);
+      showAlert('error', 'Failed to export brain.json.');
+    }
+  };
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        showAlert('error', 'Invalid JSON: could not parse file as JSON.');
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        return;
+      }
+
+      const validation = validateBrainShape(parsed);
+      if (!validation.valid || !validation.brain) {
+        showAlert('error', validation.error || 'Invalid brain.json structure.');
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        return;
+      }
+
+      // Persist to localStorage
+      setBrainRaw(validation.brain);
+      const resultsToSave = validation.results || [];
+      savePostedResultsRaw(resultsToSave);
+
+      // Notify parent state
+      if (onBrainUpdated) {
+        onBrainUpdated(validation.brain);
+      }
+      onResultsUpdated(resultsToSave);
+
+      showAlert(
+        'success',
+        `Imported brain.json successfully: v${validation.brain.version} with ${validation.brain.rules.length} rules and ${resultsToSave.length} results.`
+      );
+    } catch (err) {
+      console.error('Failed to import brain:', err);
+      showAlert('error', 'Unexpected error reading import file.');
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleLoadDemo = () => {
+    const { brain: demoBrain, results: demoResults } = loadDemoBrain();
+    if (onBrainUpdated) {
+      onBrainUpdated(demoBrain);
+    }
+    onResultsUpdated(demoResults);
+    showAlert('success', 'Loaded Demo Brain v3 with 5 learned rules (sample) and 12 sample results.');
+  };
+
+  const handleResetToFresh = () => {
+    clearBrain();
+    clearPostedResults();
+    const freshBrain: BrainState = {
+      version: 1,
+      voice: {
+        summary: 'Direct founder builder voice baseline. Focused on signal over noise.',
+        traits: ['Direct', 'Practical'],
+        sentenceStyle: 'Short, clear sentences.',
+        vocabulary: ['signal vs noise'],
+        emojiUsage: 'Minimal',
+        signaturePhrases: [],
+        avoid: ['buzzwords'],
+      },
+      rules: [],
+      history: [],
+      isSample: false,
+    };
+    setBrainRaw(freshBrain);
+    if (onBrainUpdated) {
+      onBrainUpdated(freshBrain);
+    }
+    onResultsUpdated([]);
+    showAlert('success', 'Reset to fresh brain (v1 with 0 rules and 0 results).');
   };
 
   const currentVersion = brain?.version || 1;
   const historyItems = brain?.history || [];
+
+  // Fresh brain condition: v1 with zero rules and zero results
+  const isFreshBrain =
+    (currentVersion === 1 || !brain) &&
+    (!brain?.rules || brain.rules.length === 0) &&
+    postedResults.length === 0;
 
   return (
     <div className="w-full space-y-8 text-neutral-100">
@@ -84,6 +211,83 @@ export function BrandBrainDashboard({
         isUpdatingBrain={isUpdatingBrain}
       />
 
+      {/* Alert / Notification Toast Banner */}
+      <AnimatePresence>
+        {alertMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            className={`flex items-center justify-between gap-3 rounded-2xl border p-4 text-xs backdrop-blur-md ${
+              alertMessage.type === 'success'
+                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
+                : 'border-rose-500/30 bg-rose-500/10 text-rose-200'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              {alertMessage.type === 'success' ? (
+                <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+              ) : (
+                <AlertCircle className="h-4 w-4 text-rose-400 shrink-0" />
+              )}
+              <span className="font-mono">{alertMessage.text}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAlertMessage(null)}
+              className="text-neutral-400 hover:text-white text-xs font-mono px-2 py-0.5 rounded-lg hover:bg-white/10"
+            >
+              ✕
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Gentle Prompt for Fresh Brain (v1 with zero rules and zero results) */}
+      {isFreshBrain && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="rounded-3xl border border-indigo-500/30 bg-gradient-to-r from-indigo-950/40 via-neutral-950/80 to-indigo-950/40 p-6 sm:p-7 backdrop-blur-xl shadow-xl shadow-indigo-950/20 flex flex-col md:flex-row items-start md:items-center justify-between gap-5"
+        >
+          <div className="flex items-center gap-4">
+            <div className="h-11 w-11 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center shrink-0">
+              <Sparkles className="h-5 w-5 text-indigo-400" />
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-white">Fresh brain</span>
+                <span className="rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-0.5 text-[10px] font-mono">
+                  v1 baseline
+                </span>
+              </div>
+              <p className="text-xs sm:text-sm text-neutral-300 font-normal">
+                Fresh brain. Load the demo brain or log results to start learning.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+            <Button
+              onClick={handleLoadDemo}
+              size="sm"
+              className="rounded-xl bg-white text-black hover:bg-neutral-200 text-xs font-semibold px-4 shadow-md cursor-pointer"
+            >
+              <Brain className="mr-1.5 h-3.5 w-3.5 text-indigo-600" />
+              Load demo brain
+            </Button>
+            <Button
+              onClick={handleLoadSamples}
+              variant="outline"
+              size="sm"
+              className="rounded-xl border-neutral-700 bg-neutral-900/90 text-xs text-neutral-200 hover:text-white cursor-pointer"
+            >
+              <Database className="mr-1.5 h-3.5 w-3.5 text-indigo-400" />
+              Load sample results
+            </Button>
+          </div>
+        </motion.div>
+      )}
+
       {/* Top Banner / Actions Card */}
       <div className="relative overflow-hidden rounded-3xl border border-indigo-500/20 bg-gradient-to-b from-neutral-900/60 to-neutral-950/80 p-6 sm:p-8 backdrop-blur-2xl shadow-2xl shadow-indigo-950/20">
         <div className="pointer-events-none absolute -right-10 -top-10 h-64 w-64 rounded-full bg-indigo-500/10 blur-3xl" />
@@ -95,6 +299,11 @@ export function BrandBrainDashboard({
               <span>Algorithmic Feedback Engine</span>
               <span>•</span>
               <span className="font-bold text-white">v{currentVersion}</span>
+              {brain?.isSample && (
+                <span className="ml-1 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1.5 py-0.2 text-[9px]">
+                  sample
+                </span>
+              )}
             </div>
             <h2 className="text-2xl sm:text-3xl font-light text-white tracking-tight">
               Brand Brain <span className="headline-shimmer font-medium">Intelligence Core</span>
@@ -104,23 +313,64 @@ export function BrandBrainDashboard({
             </p>
           </div>
 
-          {/* Action Buttons */}
+          {/* Action Buttons: Load demo brain, Load sample results, Export brain, Import brain, Update, Clear */}
           <div className="flex flex-wrap items-center gap-2.5">
+            <Button
+              onClick={handleLoadDemo}
+              variant="outline"
+              size="sm"
+              className="rounded-xl border-indigo-500/40 bg-indigo-500/10 text-xs text-indigo-200 hover:text-white hover:bg-indigo-500/20 transition-all cursor-pointer"
+              title="Load prebuilt sample brain at version 3 with full history and 5 learned rules (labeled sample)"
+            >
+              <Brain className="mr-1.5 h-3.5 w-3.5 text-indigo-400" />
+              Load demo brain
+            </Button>
+
             <Button
               onClick={handleLoadSamples}
               variant="outline"
               size="sm"
-              className="rounded-xl border-neutral-800 bg-neutral-900/80 text-xs text-neutral-300 hover:text-white hover:bg-neutral-800"
+              className="rounded-xl border-neutral-800 bg-neutral-900/80 text-xs text-neutral-300 hover:text-white hover:bg-neutral-800 transition-all cursor-pointer"
+              title="Load 12 realistic fake audience results"
             >
               <Database className="mr-1.5 h-3.5 w-3.5 text-indigo-400" />
               Load sample results
             </Button>
 
             <Button
+              onClick={handleExport}
+              variant="outline"
+              size="sm"
+              className="rounded-xl border-neutral-800 bg-neutral-900/80 text-xs text-neutral-300 hover:text-white hover:bg-neutral-800 transition-all cursor-pointer"
+              title="Export brain.json with version, voice, rules, history, and results"
+            >
+              <Download className="mr-1.5 h-3.5 w-3.5 text-neutral-400" />
+              Export brain
+            </Button>
+
+            <Button
+              onClick={() => fileInputRef.current?.click()}
+              variant="outline"
+              size="sm"
+              className="rounded-xl border-neutral-800 bg-neutral-900/80 text-xs text-neutral-300 hover:text-white hover:bg-neutral-800 transition-all cursor-pointer"
+              title="Import brain.json file"
+            >
+              <Upload className="mr-1.5 h-3.5 w-3.5 text-neutral-400" />
+              Import brain
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json,application/json"
+              className="hidden"
+              onChange={handleImportFile}
+            />
+
+            <Button
               onClick={onUpdateBrain}
               disabled={isUpdatingBrain || postedResults.length < 2}
               size="sm"
-              className="rounded-xl bg-white text-black hover:bg-neutral-200 text-xs font-semibold tracking-wide disabled:opacity-50 transition-all shadow-lg shadow-white/5"
+              className="rounded-xl bg-white text-black hover:bg-neutral-200 text-xs font-semibold tracking-wide disabled:opacity-50 transition-all shadow-lg shadow-white/5 cursor-pointer"
             >
               {isUpdatingBrain ? (
                 <>
@@ -135,12 +385,12 @@ export function BrandBrainDashboard({
               )}
             </Button>
 
-            {postedResults.length > 0 && (
+            {(postedResults.length > 0 || (brain && brain.version > 1) || (brain?.rules && brain.rules.length > 0)) && (
               <button
                 type="button"
-                onClick={handleClearResults}
-                title="Clear logged results"
-                className="p-2 rounded-xl border border-neutral-800 bg-neutral-900/60 text-neutral-500 hover:text-rose-400 hover:border-rose-900 transition-colors"
+                onClick={handleResetToFresh}
+                title="Reset to fresh brain (v1 with 0 rules and 0 results)"
+                className="p-2 rounded-xl border border-neutral-800 bg-neutral-900/60 text-neutral-500 hover:text-rose-400 hover:border-rose-900 transition-colors cursor-pointer"
               >
                 <Trash2 className="h-4 w-4" />
               </button>

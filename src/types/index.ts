@@ -93,6 +93,17 @@ export interface BrainState {
   isSample?: boolean;
 }
 
+export interface ExportedBrain {
+  version: number;
+  voice: BrainVoice;
+  rules: BrainRule[];
+  history: BrainHistoryItem[];
+  results: PostedResult[];
+  weights?: BrainWeights;
+  isSample?: boolean;
+  exportedAt?: string;
+}
+
 export interface PlatformCopy {
   platform: Platform;
   hook: string;
