@@ -1,6 +1,7 @@
 import React from 'react';
-import { Clip, HookType } from '@/types';
+import { Clip, HookType, BrainState } from '@/types';
 import { ScoreBar } from './ScoreBar';
+import { PlatformCopySection } from './PlatformCopySection';
 import { formatTimestamp } from '@/lib/youtube';
 import { Quote, Flame, Clock, Sparkles } from 'lucide-react';
 
@@ -8,6 +9,7 @@ interface ClipCardProps {
   clip: Clip;
   videoId: string | null;
   rank: number;
+  brain?: BrainState | null;
 }
 
 const HOOK_BADGE_STYLES: Record<HookType, { bg: string; text: string; border: string }> = {
@@ -38,7 +40,7 @@ const HOOK_BADGE_STYLES: Record<HookType, { bg: string; text: string; border: st
   },
 };
 
-export function ClipCard({ clip, videoId, rank }: ClipCardProps) {
+export function ClipCard({ clip, videoId, rank, brain }: ClipCardProps) {
   const duration = Math.max(1, clip.end_sec - clip.start_sec);
   const hookStyle = HOOK_BADGE_STYLES[clip.hook_type] || HOOK_BADGE_STYLES['bold claim'];
 
@@ -123,7 +125,7 @@ export function ClipCard({ clip, videoId, rank }: ClipCardProps) {
       </div>
 
       {/* 3 Score Bars */}
-      <div className="mt-auto space-y-2.5 pt-3 border-t border-neutral-800/60">
+      <div className="space-y-2.5 pt-3 border-t border-neutral-800/60">
         <ScoreBar
           label="Hook Strength"
           score={clip.scores.hook}
@@ -140,6 +142,13 @@ export function ClipCard({ clip, videoId, rank }: ClipCardProps) {
           color="bg-sky-500"
         />
       </div>
+
+      {/* Per-Platform Copy Generation */}
+      <PlatformCopySection
+        clip={clip}
+        brain={brain || null}
+        clipId={clip.id || `clip-${rank}-${clip.start_sec}-${clip.end_sec}`}
+      />
     </div>
   );
 }

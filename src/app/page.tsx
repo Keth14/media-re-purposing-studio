@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Brain,
@@ -18,7 +18,9 @@ import {
 import { Button } from '@/components/ui/button';
 import { ClipCard } from '@/components/ClipCard';
 import { SkeletonCard } from '@/components/SkeletonCard';
-import { Clip, IngestResponse, ClipsResponse } from '@/types';
+import { BrandVoicePanel } from '@/components/BrandVoicePanel';
+import { Clip, IngestResponse, ClipsResponse, BrainState } from '@/types';
+import { getBrain } from '@/lib/brain';
 
 type TabType = 'youtube' | 'paste';
 
@@ -36,6 +38,15 @@ export default function Home() {
   const [transcriptPreview, setTranscriptPreview] = useState<string | null>(null);
   const [clips, setClips] = useState<Clip[]>([]);
   const [fromCache, setFromCache] = useState<boolean>(false);
+
+  // Brand Voice State
+  const [brain, setBrain] = useState<BrainState | null>(null);
+  const [isVoicePanelOpen, setIsVoicePanelOpen] = useState<boolean>(false);
+
+  // Load brain from localStorage on mount
+  useEffect(() => {
+    setBrain(getBrain());
+  }, []);
 
   // Prevent double-clicks or React strict-mode double firing
   const isSubmittingRef = React.useRef<boolean>(false);
@@ -150,9 +161,27 @@ export default function Home() {
       <div className="relative z-10 w-full max-w-6xl px-4 sm:px-6 py-12 flex flex-col items-center">
         {/* Header */}
         <header className="text-center space-y-4 mb-10 max-w-2xl">
-          <div className="inline-flex items-center gap-2 rounded-full border border-neutral-800 bg-neutral-900/60 px-3.5 py-1 text-xs text-neutral-400 backdrop-blur-sm">
-            <Brain className="h-3.5 w-3.5 text-indigo-400" />
-            <span className="font-mono uppercase tracking-wider text-[11px]">Brand Brain Studio</span>
+          <div className="flex items-center justify-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsVoicePanelOpen(true)}
+              className="inline-flex items-center gap-2 rounded-full border border-neutral-800 bg-neutral-900/80 px-4 py-1.5 text-xs text-neutral-300 backdrop-blur-sm hover:border-neutral-700 hover:bg-neutral-900 transition-all shadow-sm group"
+            >
+              <Brain className="h-3.5 w-3.5 text-indigo-400 group-hover:scale-110 transition-transform" />
+              <span className="font-mono uppercase tracking-wider text-[11px]">Brand Voice</span>
+              {brain ? (
+                <span className="flex items-center gap-1.5 text-indigo-300 font-semibold">
+                  <span>v{brain.version}</span>
+                  {brain.isSample && (
+                    <span className="rounded bg-amber-500/20 text-amber-300 px-1 py-0.2 text-[9px] font-mono">
+                      sample
+                    </span>
+                  )}
+                </span>
+              ) : (
+                <span className="text-neutral-500 font-mono text-[10px]">(not set)</span>
+              )}
+            </button>
           </div>
 
           <h1 className="text-4xl sm:text-5xl font-light tracking-tight text-white">
@@ -378,6 +407,7 @@ export default function Home() {
                   clip={clip}
                   videoId={videoId}
                   rank={idx + 1}
+                  brain={brain}
                 />
               ))}
             </motion.div>
@@ -400,6 +430,14 @@ export default function Home() {
           )}
         </section>
       </div>
+
+      {/* Brand Voice Side Panel Drawer */}
+      <BrandVoicePanel
+        isOpen={isVoicePanelOpen}
+        onClose={() => setIsVoicePanelOpen(false)}
+        brain={brain}
+        onBrainUpdate={(newBrain) => setBrain(newBrain)}
+      />
     </div>
   );
 }

@@ -14,6 +14,7 @@ export interface ClipScores {
 }
 
 export interface Clip {
+  id?: string;
   title: string;
   start_sec: number;
   end_sec: number;
@@ -40,3 +41,54 @@ export interface ClipsResponse {
   error?: string;
 }
 
+// Brand Voice & Rules Data Model
+export interface BrainVoice {
+  summary: string;
+  traits: string[];
+  sentenceStyle: string;
+  vocabulary: string[];
+  emojiUsage: string;
+  signaturePhrases: string[];
+  avoid: string[];
+}
+
+export interface BrainRule {
+  id: string;
+  text: string;
+  evidence: string;
+  source: string;
+  createdAt: string;
+}
+
+export interface BrainHistoryItem {
+  version: number;
+  at: string;
+  voiceSnapshot: BrainVoice;
+  rules: BrainRule[];
+}
+
+export interface BrainState {
+  version: number;
+  voice: BrainVoice;
+  rules: BrainRule[];
+  history: BrainHistoryItem[];
+  isSample?: boolean;
+}
+
+export type Platform = 'youtube_shorts' | 'instagram_reels' | 'linkedin' | 'x';
+
+export interface PlatformCopy {
+  platform: Platform;
+  hook: string;
+  caption: string;
+  hashtags: string;
+  on_screen_text: string;
+  isNeutralVoice?: boolean;
+}
+
+export interface CopyResponse {
+  success: boolean;
+  copy: PlatformCopy;
+  error?: string;
+  fromCache?: boolean;
+}
