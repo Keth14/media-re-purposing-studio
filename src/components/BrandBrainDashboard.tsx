@@ -1,5 +1,19 @@
 import React, { useState } from 'react';
+import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
+
+// Dynamic import for BrainConstellation with ssr: false
+const BrainConstellation = dynamic(
+  () => import('./BrainConstellation'),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-[380px] w-full rounded-3xl bg-neutral-950/80 animate-pulse border border-neutral-800 flex items-center justify-center text-xs text-neutral-500 font-mono">
+        Initializing Brand Brain Constellation...
+      </div>
+    ),
+  }
+);
 import {
   Brain,
   Sparkles,
@@ -61,6 +75,15 @@ export function BrandBrainDashboard({
 
   return (
     <div className="w-full space-y-8 text-neutral-100">
+      {/* Tall Hero Constellation Panel (Height 380px) at the top of the Brand Brain page, above stats cards */}
+      <BrainConstellation
+        brain={brain}
+        postedResults={postedResults}
+        onLoadSamples={handleLoadSamples}
+        onUpdateBrain={onUpdateBrain}
+        isUpdatingBrain={isUpdatingBrain}
+      />
+
       {/* Top Banner / Actions Card */}
       <div className="relative overflow-hidden rounded-3xl border border-indigo-500/20 bg-gradient-to-b from-neutral-900/60 to-neutral-950/80 p-6 sm:p-8 backdrop-blur-2xl shadow-2xl shadow-indigo-950/20">
         <div className="pointer-events-none absolute -right-10 -top-10 h-64 w-64 rounded-full bg-indigo-500/10 blur-3xl" />
