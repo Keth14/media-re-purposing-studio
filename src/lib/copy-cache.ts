@@ -5,16 +5,18 @@ interface CachedCopyEntry {
   cachedAt: number;
 }
 
-// In-memory cache keyed by clip id + platform + voice version
+// In-memory cache keyed by clip id + platform + voice version + rule version
 const copyCache = new Map<string, CachedCopyEntry>();
 
 export function getCopyCacheKey(
   clipId: string,
   platform: Platform,
-  voiceVersion: number
+  voiceVersion: number,
+  rulesVersion?: number
 ): string {
   const cleanClipId = clipId.trim();
-  return `${cleanClipId}:${platform}:v${voiceVersion}`;
+  const rVer = rulesVersion !== undefined ? `:r${rulesVersion}` : '';
+  return `${cleanClipId}:${platform}:v${voiceVersion}${rVer}`;
 }
 
 export function getCachedCopy(key: string): PlatformCopy | null {

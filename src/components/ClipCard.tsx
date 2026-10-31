@@ -1,15 +1,18 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Clip, HookType, BrainState } from '@/types';
 import { ScoreBar } from './ScoreBar';
 import { PlatformCopySection } from './PlatformCopySection';
+import { LogResultModal } from './LogResultModal';
 import { formatTimestamp } from '@/lib/youtube';
-import { Quote, Flame, Clock, Sparkles } from 'lucide-react';
+import { Quote, Flame, Clock, Sparkles, ArrowUp, ArrowDown, PlusCircle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 interface ClipCardProps {
   clip: Clip;
   videoId: string | null;
   rank: number;
   brain?: BrainState | null;
+  onResultLogged?: () => void;
 }
 
 const HOOK_BADGE_STYLES: Record<HookType, { bg: string; text: string; border: string }> = {
@@ -40,14 +43,19 @@ const HOOK_BADGE_STYLES: Record<HookType, { bg: string; text: string; border: st
   },
 };
 
-export function ClipCard({ clip, videoId, rank, brain }: ClipCardProps) {
+export function ClipCard({ clip, videoId, rank, brain, onResultLogged }: ClipCardProps) {
+  const [isLogModalOpen, setIsLogModalOpen] = useState(false);
   const duration = Math.max(1, clip.end_sec - clip.start_sec);
   const hookStyle = HOOK_BADGE_STYLES[clip.hook_type] || HOOK_BADGE_STYLES['bold claim'];
+
+  const displayScore = clip.adjustedOverall ?? clip.scores.overall;
+  const hasScoreAdjustment = clip.rawOverall !== undefined && clip.adjustedOverall !== undefined && clip.adjustedOverall !== clip.rawOverall;
+  const hasRankAdjustment = clip.rankDelta !== undefined && clip.rankDelta !== 0;
 
   return (
     <div className="group relative flex flex-col rounded-2xl border border-neutral-800/80 bg-neutral-900/40 p-5 backdrop-blur-md transition-all duration-300 hover:border-neutral-700 hover:bg-neutral-900/70 hover:shadow-2xl hover:shadow-black/60">
       {/* Top Bar: Rank & Overall Score */}
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="flex h-6 w-6 items-center justify-center rounded-full bg-neutral-800 text-xs font-mono font-medium text-neutral-300">
             #{rank}
@@ -60,15 +68,35 @@ export function ClipCard({ clip, videoId, rank, brain }: ClipCardProps) {
           </span>
         </div>
 
-        {/* Overall Score Ring */}
+        {/* Score Ring */}
         <div className="flex items-center gap-2 rounded-xl border border-neutral-800 bg-neutral-950/80 px-2.5 py-1">
           <Flame className="h-3.5 w-3.5 text-amber-500" />
           <div className="text-right">
-            <span className="font-mono text-sm font-bold text-white">{clip.scores.overall}</span>
+            <span className="font-mono text-sm font-bold text-white">{displayScore}</span>
             <span className="text-[10px] text-neutral-500 font-mono">/100</span>
+            {hasScoreAdjustment && (
+              <span className="block text-[9px] font-mono text-neutral-400">
+                (raw: {clip.rawOverall})
+              </span>
+            )}
           </div>
         </div>
       </div>
+
+      {/* Brand Brain Rank Adjustment Tag */}
+      {hasRankAdjustment && (
+        <div className="mb-3 flex items-center gap-1.5 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-1 text-[11px] text-indigo-300 font-mono">
+          {clip.rankDelta! > 0 ? (
+            <ArrowUp className="h-3.5 w-3.5 text-emerald-400" />
+          ) : (
+            <ArrowDown className="h-3.5 w-3.5 text-rose-400" />
+          )}
+          <span>Brand Brain adjusted this</span>
+          <span className="font-bold text-white">
+            ({clip.rankDelta! > 0 ? `+${clip.rankDelta}` : clip.rankDelta})
+          </span>
+        </div>
+      )}
 
       {/* Video Player or Audio/Time Placeholder */}
       <div className="relative mb-4 overflow-hidden rounded-xl border border-neutral-800/80 bg-neutral-950 aspect-video shadow-inner">
@@ -95,14 +123,26 @@ export function ClipCard({ clip, videoId, rank, brain }: ClipCardProps) {
 
       {/* Timestamp Pill & Title */}
       <div className="mb-3 space-y-1.5">
-        <div className="flex items-center gap-2 text-xs text-neutral-400 font-mono">
-          <Clock className="h-3 w-3 text-neutral-500" />
-          <span>
-            {formatTimestamp(clip.start_sec)} - {formatTimestamp(clip.end_sec)}
-          </span>
-          <span className="text-neutral-600">•</span>
-          <span className="text-neutral-300 font-medium">{duration}s</span>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-xs text-neutral-400 font-mono">
+            <Clock className="h-3 w-3 text-neutral-500" />
+            <span>
+              {formatTimestamp(clip.start_sec)} - {formatTimestamp(clip.end_sec)}
+            </span>
+            <span className="text-neutral-600">•</span>
+            <span className="text-neutral-300 font-medium">{duration}s</span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIsLogModalOpen(true)}
+            className="inline-flex items-center gap-1 rounded-md border border-neutral-800 bg-neutral-900/60 px-2 py-0.5 text-[10px] text-neutral-400 hover:text-white hover:border-neutral-700 transition-colors font-mono"
+          >
+            <PlusCircle className="h-3 w-3 text-indigo-400" />
+            Log result
+          </button>
         </div>
+
         <h3 className="text-lg font-medium tracking-tight text-neutral-100 group-hover:text-white transition-colors">
           {clip.title}
         </h3>
@@ -110,7 +150,7 @@ export function ClipCard({ clip, videoId, rank, brain }: ClipCardProps) {
 
       {/* Reason */}
       <p className="mb-4 text-xs leading-relaxed text-neutral-400">
-        {clip.reason}
+        {clip.adjustmentReason || clip.reason}
       </p>
 
       {/* Trigger Quote Highlight */}
@@ -149,7 +189,17 @@ export function ClipCard({ clip, videoId, rank, brain }: ClipCardProps) {
         brain={brain || null}
         clipId={clip.id || `clip-${rank}-${clip.start_sec}-${clip.end_sec}`}
       />
+
+      {/* Log Result Modal */}
+      <LogResultModal
+        isOpen={isLogModalOpen}
+        onClose={() => setIsLogModalOpen(false)}
+        clip={clip}
+        rank={rank}
+        onResultLogged={() => {
+          if (onResultLogged) onResultLogged();
+        }}
+      />
     </div>
   );
 }
-

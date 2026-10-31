@@ -62,7 +62,9 @@ export function PlatformCopySection({ clip, brain, clipId }: PlatformCopySection
           clip,
           platform,
           voice: brain?.voice || null,
+          rules: brain?.rules || [],
           voiceVersion,
+          rulesVersion: brain?.rules?.length || 0,
           clipId,
         }),
       });

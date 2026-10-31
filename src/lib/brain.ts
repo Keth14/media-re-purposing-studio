@@ -1,4 +1,4 @@
-import { BrainState, BrainVoice, BrainRule } from '@/types';
+import { BrainState, BrainVoice, BrainRule, BrainWeights } from '@/types';
 
 const STORAGE_KEY = 'brandbrain_state_v1';
 
@@ -79,13 +79,16 @@ export function getBrain(): BrainState | null {
 export function saveBrain(
   newVoice: BrainVoice,
   newRules: BrainRule[] = [],
-  isSample = false
+  isSample = false,
+  weights?: BrainWeights,
+  explanation?: string
 ): BrainState {
   if (typeof window === 'undefined') {
     return {
       version: 1,
       voice: newVoice,
       rules: newRules,
+      weights,
       history: [],
       isSample,
     };
@@ -100,6 +103,7 @@ export function saveBrain(
         version: 1,
         voice: newVoice,
         rules: newRules,
+        weights,
         history: [],
         isSample,
       };
@@ -112,6 +116,7 @@ export function saveBrain(
       version: current.version + 1,
       voice: newVoice,
       rules: newRules.length > 0 ? newRules : current.rules,
+      weights: weights || current.weights,
       history: [
         ...current.history,
         {
@@ -119,6 +124,8 @@ export function saveBrain(
           at: now,
           voiceSnapshot: current.voice,
           rules: current.rules,
+          weights: current.weights,
+          explanation: explanation || 'Updated brand voice and rules.',
         },
       ],
       isSample,
@@ -132,10 +139,29 @@ export function saveBrain(
       version: 1,
       voice: newVoice,
       rules: newRules,
+      weights,
       history: [],
       isSample,
     };
   }
+}
+
+export function restoreBrainVersion(versionNumber: number): BrainState | null {
+  const current = getBrain();
+  if (!current) return null;
+
+  if (current.version === versionNumber) return current;
+
+  const historical = current.history.find((h) => h.version === versionNumber);
+  if (!historical) return null;
+
+  return saveBrain(
+    historical.voiceSnapshot,
+    historical.rules,
+    false,
+    historical.weights,
+    `Restored from historical version v${versionNumber}`
+  );
 }
 
 export function loadSampleBrain(): BrainState {
@@ -150,3 +176,4 @@ export function clearBrain(): void {
     console.error('Failed to clear brand brain from localStorage:', err);
   }
 }
+

@@ -5,6 +5,8 @@ export interface TranscriptSegment {
 }
 
 export type HookType = 'question' | 'bold claim' | 'story' | 'stat' | 'contrarian';
+export type DurationBucket = 'under 25s' | '25-40s' | 'over 40s';
+export type Platform = 'youtube_shorts' | 'instagram_reels' | 'linkedin' | 'x';
 
 export interface ClipScores {
   hook: number;
@@ -22,6 +24,11 @@ export interface Clip {
   scores: ClipScores;
   reason: string;
   trigger_quote: string;
+  // Feedback loop adjustments
+  rawOverall?: number;
+  adjustedOverall?: number;
+  rankDelta?: number;
+  adjustmentReason?: string;
 }
 
 export interface IngestResponse {
@@ -56,8 +63,13 @@ export interface BrainRule {
   id: string;
   text: string;
   evidence: string;
-  source: string;
+  source: string; // 'sample' | 'learned_samples' | 'feedback_loop'
   createdAt: string;
+}
+
+export interface BrainWeights {
+  hook_multipliers: Partial<Record<HookType, number>>;
+  duration_multipliers: Partial<Record<DurationBucket, number>>;
 }
 
 export interface BrainHistoryItem {
@@ -65,17 +77,18 @@ export interface BrainHistoryItem {
   at: string;
   voiceSnapshot: BrainVoice;
   rules: BrainRule[];
+  weights?: BrainWeights;
+  explanation?: string;
 }
 
 export interface BrainState {
   version: number;
   voice: BrainVoice;
   rules: BrainRule[];
+  weights?: BrainWeights;
   history: BrainHistoryItem[];
   isSample?: boolean;
 }
-
-export type Platform = 'youtube_shorts' | 'instagram_reels' | 'linkedin' | 'x';
 
 export interface PlatformCopy {
   platform: Platform;
@@ -91,4 +104,62 @@ export interface CopyResponse {
   copy: PlatformCopy;
   error?: string;
   fromCache?: boolean;
+}
+
+// Feedback Loop Types
+export interface PostedResult {
+  id: string;
+  clip_id: string;
+  title: string;
+  hook_type: HookType;
+  duration_bucket: DurationBucket;
+  duration_sec: number;
+  platform: Platform;
+  topic_tag: string;
+  original_rank: number;
+  views: number;
+  retention_pct: number;
+  likes: number;
+  shares: number;
+  isSample: boolean;
+  createdAt: string;
+  score?: number;
+}
+
+export interface GroupStat {
+  key: string;
+  label: string;
+  count: number;
+  meanScore: number;
+  lift: number; // e.g. +42.5%
+  status: 'winning' | 'underperforming' | 'neutral' | 'not enough data';
+}
+
+export interface ComputedStats {
+  overallMean: number;
+  totalPosts: number;
+  hookStats: Record<string, GroupStat>;
+  durationStats: Record<string, GroupStat>;
+  platformStats: Record<string, GroupStat>;
+  winningHooks: string[];
+  bestLength: string;
+  bestPlatform: string;
+  allNumbers: number[];
+}
+
+export interface DiffViewData {
+  fromVersion: number;
+  toVersion: number;
+  addedRules: BrainRule[];
+  changedRules: { id: string; oldText: string; newText: string; reason: string }[];
+  removedRules: { id: string; text: string; reason: string }[];
+  voiceChanges: { field: string; from: string; to: string }[];
+  explanation: string;
+  reorderedClips?: {
+    clipId: string;
+    title: string;
+    oldRank: number;
+    newRank: number;
+    reason: string;
+  }[];
 }

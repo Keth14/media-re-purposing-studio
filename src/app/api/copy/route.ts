@@ -13,7 +13,7 @@ const VALID_PLATFORMS: Platform[] = ['youtube_shorts', 'instagram_reels', 'linke
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { clip, platform, voice, voiceVersion = 1, clipId: rawClipId } = body;
+    const { clip, platform, voice, rules, voiceVersion = 1, rulesVersion, clipId: rawClipId } = body;
 
     if (!clip || !platform) {
       return NextResponse.json(
@@ -27,7 +27,8 @@ export async function POST(req: NextRequest) {
       : 'youtube_shorts';
 
     const clipId = rawClipId || clip.id || `${clip.start_sec}-${clip.end_sec}`;
-    const cacheKey = getCopyCacheKey(clipId, selectedPlatform, Number(voiceVersion) || 1);
+    const rVer = rulesVersion ?? (Array.isArray(rules) ? rules.length : 0);
+    const cacheKey = getCopyCacheKey(clipId, selectedPlatform, Number(voiceVersion) || 1, rVer);
 
     // 1. Check in-memory copy cache
     const cached = getCachedCopy(cacheKey);
@@ -98,12 +99,20 @@ Signature Cadences: ${voice.signaturePhrases.join(' | ')}
 Things to AVOID: ${voice.avoid.join(', ')}`
       : `BRAND VOICE: No brand voice configured yet. Note: Writing in a clean, neutral, professional creator tone.`;
 
+    const rulesPrompt =
+      Array.isArray(rules) && rules.length > 0
+        ? `\nLEARNED BRAND RULES (Strictly enforce these empirical writing rules):\n${rules
+            .map((r: any, i: number) => `${i + 1}. ${r.text}`)
+            .join('\n')}`
+        : '';
+
     const systemPrompt = `You are a premier social media copywriter and repurposing specialist.
 Generate compelling, native social copy for a short video clip.
 
 ${platformInstructions[selectedPlatform]}
 
-${voicePrompt}`;
+${voicePrompt}
+${rulesPrompt}`;
 
     const userPrompt = `VIDEO CLIP INFORMATION:
 Title: "${clip.title}"
@@ -193,3 +202,4 @@ Generate the platform copy formatted strictly according to the JSON schema.`;
     return NextResponse.json({ success: false, error }, { status: 500 });
   }
 }
+
