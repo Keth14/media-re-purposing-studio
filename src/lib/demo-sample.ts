@@ -125,3 +125,4 @@ export const DEMO_SAMPLE_TRANSCRIPT = `[00:00] Welcome everyone. Today we are un
 [03:05] You are building for everyone, which means no one. A niche of 1,000 obsessed people beats an audience of 100,000 lukewarm followers every single time.
 [04:00] What happens when you delete 80% of your code? Every line of code you write is a liability. The best engineers delete more code than they commit.
 [05:10] How we survived near bankruptcy in year two: with two weeks of payroll left in the bank, we had to make the hardest phone call of our lives.`;
+

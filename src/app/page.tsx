@@ -85,6 +85,26 @@ export default function Home() {
   // Prevent double-clicks or React strict-mode double firing
   const isSubmittingRef = React.useRef<boolean>(false);
 
+  // Helper to detect if a text looks like a URL/link rather than a transcript
+  const looksLikeUrl = (text: string): boolean => {
+    const trimmed = text.trim();
+    if (!trimmed) return false;
+    if (/^(https?:\/\/|www\.)/i.test(trimmed)) return true;
+    if (/(?:youtube\.com\/(?:watch|shorts|live)|youtu\.be\/)/i.test(trimmed)) return true;
+    if (
+      !trimmed.includes('\n') &&
+      (trimmed.startsWith('http') ||
+        trimmed.includes('.com') ||
+        trimmed.includes('.be') ||
+        trimmed.includes('.org') ||
+        trimmed.includes('.net')) &&
+      !trimmed.includes(' ')
+    ) {
+      return true;
+    }
+    return false;
+  };
+
   const handleFindClips = async () => {
     // Guard against duplicate invocations while processing
     if (isSubmittingRef.current || Boolean(loadingStep)) {
@@ -104,8 +124,21 @@ export default function Home() {
         return;
       }
     } else {
-      if (!pastedTranscript.trim()) {
+      const trimmed = pastedTranscript.trim();
+      if (!trimmed) {
         setError('Please paste a transcript to extract clips from.');
+        return;
+      }
+      if (looksLikeUrl(trimmed)) {
+        setError(
+          'That looks like a link, not a transcript. Open the video on YouTube, click ...more, then Show transcript, copy all, and paste it here.'
+        );
+        return;
+      }
+      if (trimmed.length < 300) {
+        setError(
+          `Transcript is too short (${trimmed.length} characters). A transcript requires at least 300 characters to extract high-retention clips. Please copy the full transcript text.`
+        );
         return;
       }
     }
@@ -150,39 +183,56 @@ export default function Home() {
       setVideoId(ingestData.videoId);
       setTranscriptPreview(ingestData.formattedTranscript);
 
-      // Step 2: Clip Selection via Gemini
+      // Step 2: Clip Selection via Gemini (with 45s AbortController timeout)
       setLoadingStep('AI analyzing viral hooks & extracting the 6 best clips...');
 
-      const clipsRes = await fetch('/api/clips', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          formattedTranscript: ingestData.formattedTranscript,
-          videoId: ingestData.videoId,
-          totalDuration: ingestData.totalDuration,
-        }),
-      });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        controller.abort();
+      }, 45000);
 
-      const clipsData: ClipsResponse & { fromCache?: boolean } = await clipsRes.json();
+      try {
+        const clipsRes = await fetch('/api/clips', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            formattedTranscript: ingestData.formattedTranscript,
+            videoId: ingestData.videoId,
+            totalDuration: ingestData.totalDuration,
+          }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
 
-      if (!clipsRes.ok || !clipsData.success) {
-        throw new Error(clipsData.error || 'Failed to select clips from transcript.');
+        const clipsData: ClipsResponse & { fromCache?: boolean } = await clipsRes.json();
+
+        if (!clipsRes.ok || !clipsData.success) {
+          throw new Error(clipsData.error || 'Failed to select clips from transcript.');
+        }
+
+        if (!clipsData.clips || clipsData.clips.length === 0) {
+          throw new Error('No clips could be extracted. The transcript might be too short or lacks clear conversational segments.');
+        }
+
+        // Apply Brand Brain Reranking if weights exist
+        const adjusted = rerankClips(clipsData.clips, brain?.weights);
+        setClips(adjusted);
+        setFromCache(Boolean(clipsData.fromCache));
+      } catch (clipsErr: unknown) {
+        clearTimeout(timeoutId);
+        if (
+          (clipsErr instanceof Error && clipsErr.name === 'AbortError') ||
+          (clipsErr instanceof DOMException && clipsErr.name === 'AbortError')
+        ) {
+          throw new Error('Took too long, try again');
+        }
+        throw clipsErr;
       }
-
-      if (!clipsData.clips || clipsData.clips.length === 0) {
-        throw new Error('No clips could be extracted. The transcript might be too short or lacks clear conversational segments.');
-      }
-
-      // Apply Brand Brain Reranking if weights exist
-      const adjusted = rerankClips(clipsData.clips, brain?.weights);
-      setClips(adjusted);
-      setFromCache(Boolean(clipsData.fromCache));
-      setLoadingStep(null);
     } catch (err: unknown) {
       console.error(err);
       setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
-      setLoadingStep(null);
     } finally {
+      setLoadingStep(null);
       isSubmittingRef.current = false;
     }
   };
@@ -475,13 +525,26 @@ export default function Home() {
               initial={{ opacity: 0, y: -6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
-              className="w-full flex items-start gap-3 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-xs text-rose-300 backdrop-blur-md"
+              className="w-full flex items-start justify-between gap-3 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-xs text-rose-300 backdrop-blur-md"
             >
-              <AlertCircle className="h-4 w-4 shrink-0 text-rose-400 mt-0.5" />
-              <div className="space-y-1">
-                <p className="font-semibold text-rose-200">Notice</p>
-                <p className="text-rose-300/90 leading-relaxed">{error}</p>
+              <div className="flex items-start gap-3">
+                <AlertCircle className="h-4 w-4 shrink-0 text-rose-400 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="font-semibold text-rose-200">Notice</p>
+                  <p className="text-rose-300/90 leading-relaxed">{error}</p>
+                </div>
               </div>
+              {error.toLowerCase().includes('took too long') && (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => handleFindClips()}
+                  className="shrink-0 rounded-xl bg-rose-500 hover:bg-rose-600 text-white font-medium text-xs px-3 py-1.5 flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                >
+                  <RefreshCw className="h-3 w-3" />
+                  Retry
+                </Button>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
@@ -495,9 +558,8 @@ export default function Home() {
               <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[320px] sm:w-[580px] h-[180px] sm:h-[260px] bg-gradient-to-tr from-indigo-600/25 via-violet-600/15 to-transparent blur-3xl rounded-full" />
 
               <h1 className="relative text-4xl sm:text-6xl font-light tracking-tight text-white leading-tight">
-                Transform Long Videos into{' '}
-                <span className="font-normal text-transparent bg-clip-text bg-gradient-to-r from-white via-neutral-200 to-neutral-400">
-                  Viral Short Clips
+                <span className="headline-shimmer">
+                  Transform Long Videos into Viral Short Clips
                 </span>
               </h1>
 
@@ -603,17 +665,68 @@ export default function Home() {
               {activeTab === 'paste' && (
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <label className="block text-xs font-medium text-neutral-400">
-                      Paste Transcript Text (plain text or with [mm:ss] timestamps)
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-medium text-neutral-400">
+                        Paste Transcript Text (plain text or with [mm:ss] timestamps)
+                      </label>
+                      <span
+                        className={`text-[11px] font-mono transition-colors ${
+                          pastedTranscript.trim().length === 0
+                            ? 'text-neutral-500'
+                            : looksLikeUrl(pastedTranscript)
+                            ? 'text-amber-400'
+                            : pastedTranscript.trim().length < 300
+                            ? 'text-amber-400'
+                            : 'text-emerald-400'
+                        }`}
+                      >
+                        {pastedTranscript.trim().length} chars (min 300)
+                      </span>
+                    </div>
                     <textarea
                       rows={7}
                       value={pastedTranscript}
-                      onChange={(e) => setPastedTranscript(e.target.value)}
+                      onChange={(e) => {
+                        setPastedTranscript(e.target.value);
+                        if (error) setError(null);
+                      }}
                       placeholder="[00:00] Paste your transcript here...&#10;Or paste plain text without timestamps — the system will automatically estimate timestamps at ~150 words per minute."
-                      className="w-full rounded-xl border border-neutral-800 bg-neutral-900/90 p-4 text-sm text-neutral-200 placeholder-neutral-600 focus:border-neutral-600 focus:outline-none focus:ring-1 focus:ring-neutral-600 font-mono transition-all leading-relaxed"
+                      className={`w-full rounded-xl border bg-neutral-900/90 p-4 text-sm text-neutral-200 placeholder-neutral-600 focus:outline-none font-mono transition-all leading-relaxed ${
+                        looksLikeUrl(pastedTranscript)
+                          ? 'border-amber-500/60 focus:border-amber-500 focus:ring-1 focus:ring-amber-500'
+                          : 'border-neutral-800 focus:border-neutral-600 focus:ring-1 focus:ring-neutral-600'
+                      }`}
                     />
                   </div>
+
+                  {/* Inline Alert: URL Detected */}
+                  {looksLikeUrl(pastedTranscript) && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-200 flex items-start gap-2.5 backdrop-blur-sm"
+                    >
+                      <AlertCircle className="h-4 w-4 shrink-0 text-amber-400 mt-0.5" />
+                      <div className="space-y-0.5">
+                        <p className="font-semibold text-amber-100">Link detected instead of transcript</p>
+                        <p className="text-amber-200/90 leading-relaxed">
+                          That looks like a link, not a transcript. Open the video on YouTube, click ...more, then Show transcript, copy all, and paste it here.
+                        </p>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {/* Inline Hint: Under 300 Chars */}
+                  {!looksLikeUrl(pastedTranscript) &&
+                    pastedTranscript.trim().length > 0 &&
+                    pastedTranscript.trim().length < 300 && (
+                      <div className="rounded-xl border border-neutral-800/80 bg-neutral-900/40 px-3.5 py-2.5 text-xs text-neutral-400 flex items-center justify-between">
+                        <span>Transcript text must be at least 300 characters to extract quality clips.</span>
+                        <span className="font-mono text-amber-400/90 text-[11px] shrink-0 ml-2">
+                          {300 - pastedTranscript.trim().length} more needed
+                        </span>
+                      </div>
+                    )}
 
                   <div className="space-y-1.5">
                     <label className="block text-[11px] font-medium text-neutral-500">

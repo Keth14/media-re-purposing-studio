@@ -121,9 +121,11 @@
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
   }
+
   html {
     @apply font-sans;
   }
@@ -132,4 +134,45 @@
 .studio-grain {
   background-image: radial-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 0);
   background-size: 28px 28px;
+}
+
+@keyframes headline-shimmer {
+  0% {
+    background-position: 0% 0%;
+  }
+  75% {
+    background-position: 100% 100%;
+  }
+  100% {
+    background-position: 100% 100%;
+  }
+}
+
+.headline-shimmer {
+  background: linear-gradient(
+    135deg,
+    #9ca3af 0%,
+    #9ca3af 45%,
+    #ffffff 50%,
+    #9ca3af 55%,
+    #9ca3af 100%
+  );
+  background-size: 300% 300%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: headline-shimmer 7s linear infinite;
+  display: inline;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .headline-shimmer {
+    animation: none;
+    background: none;
+    -webkit-text-fill-color: #e4e4e7;
+    color: #e4e4e7;
+  }
 }

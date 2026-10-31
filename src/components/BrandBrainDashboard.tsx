@@ -74,7 +74,7 @@ export function BrandBrainDashboard({
               <span className="font-bold text-white">v{currentVersion}</span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-light text-white tracking-tight">
-              Brand Brain <span className="font-normal text-transparent bg-clip-text bg-gradient-to-r from-indigo-200 to-indigo-400">Intelligence Core</span>
+              Brand Brain <span className="headline-shimmer font-medium">Intelligence Core</span>
             </h2>
             <p className="text-xs sm:text-sm text-neutral-400 max-w-xl leading-relaxed">
               Empirical rules, algorithmic lift weights, and performance telemetry learned directly from audience retention.
