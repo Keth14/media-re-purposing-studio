@@ -216,3 +216,55 @@ export function parsePastedTranscript(text: string): {
   return mergeTranscriptSegments(rawSegments, 20);
 }
 
+/**
+ * Parses Gemini video transcription lines in the form [mm:ss] text or [hh:mm:ss] text.
+ */
+export function parseGeminiTranscriptLines(rawOutput: string): {
+  segments: TranscriptSegment[];
+  formattedTranscript: string;
+  totalDuration: number;
+} {
+  const lines = rawOutput
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  const rawParsed: { start: number; text: string }[] = [];
+
+  for (const line of lines) {
+    const match = line.match(/^\s*\[?(\d{1,2}:\d{2}(?::\d{2})?)\]?\s*[:-]?\s*(.*)$/);
+    if (match) {
+      const parsedSec = parseTimestampToSeconds(match[1]);
+      if (parsedSec !== null) {
+        const text = match[2].trim();
+        if (text) {
+          rawParsed.push({ start: parsedSec, text });
+        }
+      }
+    } else if (rawParsed.length > 0 && line) {
+      rawParsed[rawParsed.length - 1].text += ' ' + line;
+    }
+  }
+
+  if (rawParsed.length === 0) {
+    return parsePastedTranscript(rawOutput);
+  }
+
+  const rawSegments: TranscriptSegment[] = [];
+  for (let i = 0; i < rawParsed.length; i++) {
+    const current = rawParsed[i];
+    const next = rawParsed[i + 1];
+    let duration = 20;
+    if (next && next.start > current.start) {
+      duration = Math.max(2, next.start - current.start);
+    }
+    rawSegments.push({
+      start: current.start,
+      duration,
+      text: current.text,
+    });
+  }
+
+  return mergeTranscriptSegments(rawSegments, 20);
+}
+

@@ -1,14 +1,137 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { YoutubeTranscript, YoutubeTranscriptError } from 'youtube-transcript';
+import { YoutubeTranscript } from 'youtube-transcript';
+import { GoogleGenAI, MediaResolution } from '@google/genai';
 import {
   extractYouTubeVideoId,
   mergeTranscriptSegments,
   parsePastedTranscript,
+  parseGeminiTranscriptLines,
 } from '@/lib/youtube';
+import { getSanitizedApiKey, getGeminiModel } from '@/lib/env';
+import { getCachedIngest, setCachedIngest } from '@/lib/ingest-cache';
 import { TranscriptSegment } from '@/types';
 
+export const maxDuration = 60;
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+async function fetchVideoTitle(videoId: string): Promise<string> {
+  try {
+    const oembedRes = await fetch(
+      `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`,
+      { signal: AbortSignal.timeout(4000) }
+    );
+    if (oembedRes.ok) {
+      const oembedData = await oembedRes.json();
+      if (oembedData.title) return oembedData.title;
+    }
+  } catch {
+    // fallback
+  }
+  return 'YouTube Video';
+}
+
+async function transcribeWithGemini(
+  videoId: string,
+  apiKey: string,
+  modelName: string
+): Promise<string> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 55000);
+
+  const promptText =
+    'Transcribe the spoken words of this video. Output plain lines in the form [mm:ss] text, one line roughly every 15-20 seconds, no commentary.';
+  const fileUri = `https://www.youtube.com/watch?v=${videoId}`;
+
+  try {
+    // 1. Try with GoogleGenAI SDK
+    const ai = new GoogleGenAI({ apiKey });
+    const sdkPromise = ai.models.generateContent({
+      model: modelName,
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            {
+              fileData: {
+                fileUri,
+                mimeType: 'video/mp4',
+              },
+            },
+            {
+              text: promptText,
+            },
+          ],
+        },
+      ],
+      config: {
+        mediaResolution: MediaResolution.MEDIA_RESOLUTION_LOW,
+      },
+    });
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      controller.signal.addEventListener('abort', () =>
+        reject(new Error('Gemini video understanding timeout after 55s'))
+      );
+    });
+
+    try {
+      const response = await Promise.race([sdkPromise, timeoutPromise]);
+      if (response && response.text && response.text.trim()) {
+        return response.text.trim();
+      }
+    } catch (sdkErr) {
+      console.warn('GoogleGenAI SDK video call failed, attempting direct Gemini REST endpoint:', sdkErr);
+    }
+
+    // 2. Direct Gemini REST endpoint fallback with mediaResolution: MEDIA_RESOLUTION_LOW
+    const restRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                {
+                  fileData: {
+                    fileUri,
+                    mimeType: 'video/mp4',
+                  },
+                },
+                {
+                  text: promptText,
+                },
+              ],
+            },
+          ],
+          generationConfig: {
+            mediaResolution: 'MEDIA_RESOLUTION_LOW',
+          },
+        }),
+        signal: controller.signal,
+      }
+    );
+
+    if (!restRes.ok) {
+      const errBody = await restRes.json().catch(() => ({}));
+      throw new Error(
+        errBody.error?.message || `Gemini REST call returned status ${restRes.status}`
+      );
+    }
+
+    const restData = await restRes.json();
+    const candidateText = restData.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!candidateText || !candidateText.trim()) {
+      throw new Error('Gemini returned an empty transcript.');
+    }
+    return candidateText.trim();
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -37,17 +160,7 @@ export async function POST(req: NextRequest) {
 
       let videoTitle = 'Pasted Video Transcript';
       if (resolvedVideoId) {
-        try {
-          const oembedRes = await fetch(
-            `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${resolvedVideoId}&format=json`
-          );
-          if (oembedRes.ok) {
-            const oembedData = await oembedRes.json();
-            if (oembedData.title) videoTitle = oembedData.title;
-          }
-        } catch {
-          // fallback
-        }
+        videoTitle = await fetchVideoTitle(resolvedVideoId);
       }
 
       return NextResponse.json({
@@ -86,23 +199,37 @@ export async function POST(req: NextRequest) {
         );
       }
 
+      // 1. Check in-memory cache first by video ID
+      const cached = getCachedIngest(videoId);
+      if (cached) {
+        return NextResponse.json({
+          ...cached,
+          fromCache: true,
+        });
+      }
+
+      // 2. First Attempt: youtube-transcript with an 8 second timeout
+      let rawTranscript: Array<{ text: string; duration: number; offset: number }> | null = null;
       try {
-        const rawTranscript = await YoutubeTranscript.fetchTranscript(videoId);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
 
-        if (!rawTranscript || rawTranscript.length === 0) {
-          return NextResponse.json(
-            {
-              success: false,
-              error: 'No transcript found for this video. Captions may be disabled on this video.',
-              canFallbackToPaste: true,
-              videoId,
-            },
-            { status: 404 }
-          );
-        }
+        rawTranscript = await Promise.race([
+          YoutubeTranscript.fetchTranscript(videoId),
+          new Promise<never>((_, reject) => {
+            controller.signal.addEventListener('abort', () =>
+              reject(new Error('youtube-transcript scraper timeout after 8s'))
+            );
+          }),
+        ]);
+        clearTimeout(timeoutId);
+      } catch (scraperErr) {
+        console.warn('youtube-transcript scraper failed or timed out:', scraperErr);
+        rawTranscript = null;
+      }
 
-        // Determine if offsets/durations are in milliseconds or seconds
-        // YouTube srv3 format returns milliseconds (e.g. offset: 18640, duration: 3240)
+      // If youtube-transcript succeeded and returned segments
+      if (rawTranscript && rawTranscript.length > 0) {
         const isMs = rawTranscript.slice(0, 5).some((item) => item.duration > 50 || item.offset > 5000);
 
         const normalizedSegments: TranscriptSegment[] = rawTranscript.map((item) => ({
@@ -112,41 +239,70 @@ export async function POST(req: NextRequest) {
         }));
 
         const merged = mergeTranscriptSegments(normalizedSegments, 20);
+        const videoTitle = await fetchVideoTitle(videoId);
 
-        let videoTitle = 'YouTube Video';
-        try {
-          const oembedRes = await fetch(
-            `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`
-          );
-          if (oembedRes.ok) {
-            const oembedData = await oembedRes.json();
-            if (oembedData.title) videoTitle = oembedData.title;
-          }
-        } catch {
-          // fallback
-        }
-
-        return NextResponse.json({
+        const responseData = {
           success: true,
           videoId,
           videoTitle,
           segments: merged.segments,
           formattedTranscript: merged.formattedTranscript,
           totalDuration: merged.totalDuration,
-        });
-      } catch (err: unknown) {
-        let errorMessage = 'Failed to fetch YouTube transcript. The video might not have captions enabled or is restricted.';
+        };
 
-        if (err instanceof YoutubeTranscriptError) {
-          errorMessage = err.message || errorMessage;
-        } else if (err instanceof Error) {
-          errorMessage = err.message;
-        }
+        // Cache result by video ID
+        setCachedIngest(videoId, responseData);
 
+        return NextResponse.json(responseData);
+      }
+
+      // 3. Fallback: Gemini video understanding
+      const apiKey = getSanitizedApiKey(process.env.GEMINI_API_KEY);
+      if (!apiKey) {
         return NextResponse.json(
           {
             success: false,
-            error: `${errorMessage} You can paste the transcript directly in the "Paste transcript" tab.`,
+            error:
+              'Gemini could not read this video. Use a public video under 20 minutes, or paste the transcript.',
+            canFallbackToPaste: true,
+            videoId,
+          },
+          { status: 422 }
+        );
+      }
+
+      const modelName = getGeminiModel();
+
+      try {
+        const geminiOutput = await transcribeWithGemini(videoId, apiKey, modelName);
+        const parsed = parseGeminiTranscriptLines(geminiOutput);
+
+        if (!parsed.segments || parsed.segments.length === 0) {
+          throw new Error('No transcript segments parsed from Gemini video output.');
+        }
+
+        const videoTitle = await fetchVideoTitle(videoId);
+
+        const responseData = {
+          success: true,
+          videoId,
+          videoTitle,
+          segments: parsed.segments,
+          formattedTranscript: parsed.formattedTranscript,
+          totalDuration: parsed.totalDuration,
+        };
+
+        // Cache result by video ID
+        setCachedIngest(videoId, responseData);
+
+        return NextResponse.json(responseData);
+      } catch (geminiErr: unknown) {
+        console.error('Gemini video understanding error:', geminiErr);
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              'Gemini could not read this video. Use a public video under 20 minutes, or paste the transcript.',
             canFallbackToPaste: true,
             videoId,
           },
@@ -164,4 +320,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error }, { status: 500 });
   }
 }
-

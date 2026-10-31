@@ -83,6 +83,10 @@ export default function Home() {
   const [isSavingSample, setIsSavingSample] = useState<boolean>(false);
   const [sampleSaveSuccess, setSampleSaveSuccess] = useState<string | null>(null);
 
+  // Paste tab UX blocked reason & shake trigger
+  const [blockedReason, setBlockedReason] = useState<string | null>(null);
+  const [shakeTrigger, setShakeTrigger] = useState<number>(0);
+
   // 3D Boot Intro Session State (Plays once per browser session)
   const [showIntro, setShowIntro] = useState<boolean>(false);
 
@@ -163,6 +167,20 @@ export default function Home() {
     return false;
   };
 
+  const getPasteBlockedReason = (text: string): string | null => {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      return 'Please paste a transcript to extract clips from (minimum 300 characters).';
+    }
+    if (looksLikeUrl(trimmed)) {
+      return 'That looks like a link, not a transcript. Open the video on YouTube, click ...more, then Show transcript, copy all, and paste here. The video link goes in the small box below, not here.';
+    }
+    if (trimmed.length < 300) {
+      return `Transcript must be at least 300 characters to extract quality clips (currently ${trimmed.length}/300). Paste the full transcript from YouTube.`;
+    }
+    return null;
+  };
+
   const handleFindClips = async () => {
     // Guard against duplicate invocations while processing
     if (isSubmittingRef.current || Boolean(loadingStep)) {
@@ -182,30 +200,24 @@ export default function Home() {
         return;
       }
     } else {
-      const trimmed = pastedTranscript.trim();
-      if (!trimmed) {
-        setError('Please paste a transcript to extract clips from.');
+      const reason = getPasteBlockedReason(pastedTranscript);
+      if (reason) {
+        setBlockedReason(reason);
+        setShakeTrigger((prev) => prev + 1);
         return;
       }
-      if (looksLikeUrl(trimmed)) {
-        setError(
-          'That looks like a link, not a transcript. Open the video on YouTube, click ...more, then Show transcript, copy all, and paste it here.'
-        );
-        return;
-      }
-      if (trimmed.length < 300) {
-        setError(
-          `Transcript is too short (${trimmed.length} characters). A transcript requires at least 300 characters to extract high-retention clips. Please copy the full transcript text.`
-        );
-        return;
-      }
+      setBlockedReason(null);
     }
 
     isSubmittingRef.current = true;
 
     try {
       // Step 1: Ingest Transcript
-      setLoadingStep('Ingesting transcript...');
+      if (activeTab === 'youtube') {
+        setLoadingStep('Reading the video with Gemini (can take up to a minute)...');
+      } else {
+        setLoadingStep('Ingesting transcript...');
+      }
 
       const ingestPayload =
         activeTab === 'youtube'
@@ -225,17 +237,21 @@ export default function Home() {
       const ingestData: IngestResponse = await ingestRes.json();
 
       if (!ingestRes.ok || !ingestData.success) {
-        // If YouTube fetch fails, auto switch to Paste tab
+        // If YouTube fetch fails, auto switch to Paste tab with error
         if (activeTab === 'youtube' && ingestData.canFallbackToPaste) {
           setActiveTab('paste');
-          setFallbackNotice(
-            'Unable to extract captions directly from YouTube. Automatically switched to "Paste transcript" so you can paste the transcript text below.'
-          );
+          const fallbackMsg =
+            ingestData.error ||
+            'Gemini could not read this video. Use a public video under 20 minutes, or paste the transcript.';
+          setFallbackNotice(fallbackMsg);
           if (ingestData.videoId && !manualVideoId) {
             setManualVideoId(ingestData.videoId);
           }
         }
-        throw new Error(ingestData.error || 'Failed to ingest transcript.');
+        throw new Error(
+          ingestData.error ||
+            'Gemini could not read this video. Use a public video under 20 minutes, or paste the transcript.'
+        );
       }
 
       setVideoId(ingestData.videoId);
@@ -775,6 +791,15 @@ export default function Home() {
               {/* Tab Content: Paste Transcript */}
               {activeTab === 'paste' && (
                 <div className="space-y-4">
+                  {/* 3-Step Helper directly above the big box */}
+                  <div className="rounded-2xl border border-indigo-500/20 bg-indigo-950/20 p-3.5 text-xs text-neutral-300 backdrop-blur-md">
+                    <p className="text-xs font-mono text-neutral-300 leading-relaxed">
+                      <span className="font-bold text-white mr-2">1</span>Open the video.{' '}
+                      <span className="font-bold text-white mx-2">2</span>Click ...more, then Show transcript.{' '}
+                      <span className="font-bold text-white mx-2">3</span>Copy all and paste here. The video link goes in the small box below, not here.
+                    </p>
+                  </div>
+
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <label className="block text-xs font-medium text-neutral-400">
@@ -785,9 +810,9 @@ export default function Home() {
                           pastedTranscript.trim().length === 0
                             ? 'text-neutral-500'
                             : looksLikeUrl(pastedTranscript)
-                            ? 'text-amber-400'
+                            ? 'text-rose-400'
                             : pastedTranscript.trim().length < 300
-                            ? 'text-amber-400'
+                            ? 'text-rose-400'
                             : 'text-emerald-400'
                         }`}
                       >
@@ -798,13 +823,18 @@ export default function Home() {
                       rows={7}
                       value={pastedTranscript}
                       onChange={(e) => {
-                        setPastedTranscript(e.target.value);
+                        const val = e.target.value;
+                        setPastedTranscript(val);
                         if (error) setError(null);
+                        if (blockedReason) {
+                          const newReason = getPasteBlockedReason(val);
+                          setBlockedReason(newReason);
+                        }
                       }}
                       placeholder="[00:00] Paste your transcript here...&#10;Or paste plain text without timestamps — the system will automatically estimate timestamps at ~150 words per minute."
                       className={`w-full rounded-xl border bg-neutral-900/90 p-4 text-sm text-neutral-200 placeholder-neutral-600 focus:outline-none font-mono transition-all leading-relaxed ${
-                        looksLikeUrl(pastedTranscript)
-                          ? 'border-amber-500/60 focus:border-amber-500 focus:ring-1 focus:ring-amber-500'
+                        looksLikeUrl(pastedTranscript) || (pastedTranscript.trim().length > 0 && pastedTranscript.trim().length < 300 && blockedReason)
+                          ? 'border-rose-500/60 focus:border-rose-500 focus:ring-1 focus:ring-rose-500'
                           : 'border-neutral-800 focus:border-neutral-600 focus:ring-1 focus:ring-neutral-600'
                       }`}
                     />
@@ -815,12 +845,12 @@ export default function Home() {
                     <motion.div
                       initial={{ opacity: 0, y: -4 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-200 flex items-start gap-2.5 backdrop-blur-sm"
+                      className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3.5 text-xs text-rose-200 flex items-start gap-2.5 backdrop-blur-sm"
                     >
-                      <AlertCircle className="h-4 w-4 shrink-0 text-amber-400 mt-0.5" />
+                      <AlertCircle className="h-4 w-4 shrink-0 text-rose-400 mt-0.5" />
                       <div className="space-y-0.5">
-                        <p className="font-semibold text-amber-100">Link detected instead of transcript</p>
-                        <p className="text-amber-200/90 leading-relaxed">
+                        <p className="font-semibold text-rose-100">Link detected instead of transcript</p>
+                        <p className="text-rose-200/90 leading-relaxed">
                           That looks like a link, not a transcript. Open the video on YouTube, click ...more, then Show transcript, copy all, and paste it here.
                         </p>
                       </div>
@@ -854,26 +884,45 @@ export default function Home() {
                 </div>
               )}
 
+              {/* Red blocked reason directly above the button when Find clips is blocked */}
+              {activeTab === 'paste' && blockedReason && (
+                <motion.div
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-300 flex items-start gap-2.5 backdrop-blur-sm"
+                >
+                  <AlertCircle className="h-4 w-4 shrink-0 text-rose-400 mt-0.5" />
+                  <span className="font-mono leading-relaxed">{blockedReason}</span>
+                </motion.div>
+              )}
+
               {/* Action Buttons: Find Clips + Try Sample Video Button */}
               <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
-                <Button
-                  onClick={handleFindClips}
-                  disabled={Boolean(loadingStep)}
-                  className="flex-1 w-full rounded-xl bg-white text-black hover:bg-neutral-200 h-12 text-sm font-semibold tracking-wide transition-all shadow-lg shadow-white/5 disabled:opacity-50 disabled:pointer-events-none disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                <motion.div
+                  key={shakeTrigger}
+                  animate={shakeTrigger > 0 ? { x: [0, -10, 10, -8, 8, -4, 4, 0] } : {}}
+                  transition={{ duration: 0.4 }}
+                  className="flex-1 w-full"
                 >
-                  {loadingStep ? (
-                    <>
-                      <RefreshCw className="h-4 w-4 animate-spin text-neutral-900" />
-                      <span>{loadingStep}</span>
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="h-4 w-4 text-black" />
-                      <span>Find clips</span>
-                      <ArrowRight className="h-4 w-4 text-black ml-1" />
-                    </>
-                  )}
-                </Button>
+                  <Button
+                    onClick={handleFindClips}
+                    disabled={Boolean(loadingStep)}
+                    className="w-full rounded-xl bg-white text-black hover:bg-neutral-200 h-12 text-sm font-semibold tracking-wide transition-all shadow-lg shadow-white/5 disabled:opacity-50 disabled:pointer-events-none disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {loadingStep ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 animate-spin text-neutral-900" />
+                        <span>{loadingStep}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-4 w-4 text-black" />
+                        <span>Find clips</span>
+                        <ArrowRight className="h-4 w-4 text-black ml-1" />
+                      </>
+                    )}
+                  </Button>
+                </motion.div>
 
                 {/* "Try sample video" button: loads only from src/data/sample.json; hidden if missing */}
                 {hasSample && sampleData && (
