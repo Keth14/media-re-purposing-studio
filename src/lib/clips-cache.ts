@@ -47,3 +47,4 @@ export function setCachedClips(
 export function clearClipsCache(): void {
   clipsCache.clear();
 }
+
