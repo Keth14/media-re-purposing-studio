@@ -143,9 +143,12 @@ Extract the 6 best short-form clips adhering strictly to the requirements and JS
     };
 
     let rawClips: any[] = [];
-    const candidateModels = [modelName, 'gemini-3.5-flash', 'gemini-3.1-flash-lite'].filter(
-      (m, idx, arr) => arr.indexOf(m) === idx
-    );
+    const candidateModels = [
+      modelName,
+      'gemini-3-flash-preview',
+      'gemini-3.5-flash',
+      'gemini-3.1-flash-lite',
+    ].filter((m, idx, arr) => arr.indexOf(m) === idx);
 
     let responseText = '';
     let lastError: unknown = null;

@@ -35,6 +35,7 @@ interface PlatformCopySectionProps {
   clip: Clip;
   brain: BrainState | null;
   clipId?: string;
+  onOpenVoicePanel?: () => void;
 }
 
 const PLATFORMS: { id: Platform; label: string; icon: React.ElementType }[] = [
@@ -44,7 +45,12 @@ const PLATFORMS: { id: Platform; label: string; icon: React.ElementType }[] = [
   { id: 'x', label: 'X', icon: Send },
 ];
 
-export function PlatformCopySection({ clip, brain, clipId }: PlatformCopySectionProps) {
+export function PlatformCopySection({
+  clip,
+  brain,
+  clipId,
+  onOpenVoicePanel,
+}: PlatformCopySectionProps) {
   const [selectedPlatform, setSelectedPlatform] = useState<Platform>('youtube_shorts');
   const [copyData, setCopyData] = useState<Record<Platform, PlatformCopy | null>>({
     youtube_shorts: null,
@@ -58,6 +64,12 @@ export function PlatformCopySection({ clip, brain, clipId }: PlatformCopySection
     linkedin: null,
     x: null,
   });
+  const [fidelityErrors, setFidelityErrors] = useState<Record<Platform, string | null>>({
+    youtube_shorts: null,
+    instagram_reels: null,
+    linkedin: null,
+    x: null,
+  });
   const [loading, setLoading] = useState<boolean>(false);
   const [loadingFidelity, setLoadingFidelity] = useState<boolean>(false);
   const [improvingMatch, setImprovingMatch] = useState<boolean>(false);
@@ -66,13 +78,27 @@ export function PlatformCopySection({ clip, brain, clipId }: PlatformCopySection
   const [showTooltip, setShowTooltip] = useState<boolean>(false);
 
   const voiceVersion = brain?.version || 1;
+  const hasVoice = Boolean(
+    brain?.voice &&
+    brain.voice.summary &&
+    brain.voice.summary.trim() &&
+    brain.voice.traits &&
+    brain.voice.traits.length > 0
+  );
 
   const evaluateFidelity = async (platform: Platform, copyItem: PlatformCopy) => {
-    if (!copyItem || !brain?.voice) return;
+    if (!copyItem || !hasVoice || !brain?.voice) return;
     const combinedText = `${copyItem.hook}\n\n${copyItem.caption}`.trim();
     if (!combinedText) return;
 
     setLoadingFidelity(true);
+    setFidelityErrors((prev) => ({ ...prev, [platform]: null }));
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+    }, 20000);
+
     try {
       const res = await fetch('/api/fidelity', {
         method: 'POST',
@@ -82,7 +108,9 @@ export function PlatformCopySection({ clip, brain, clipId }: PlatformCopySection
           voice: brain.voice,
           voiceVersion: brain.version || 1,
         }),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
 
       const data: FidelityResponse = await res.json();
       if (res.ok && data.success && typeof data.score === 'number') {
@@ -95,9 +123,23 @@ export function PlatformCopySection({ clip, brain, clipId }: PlatformCopySection
             suggested_rewrite: data.suggested_rewrite || '',
           },
         }));
+      } else {
+        throw new Error(data.error || 'Failed to evaluate voice fidelity.');
       }
-    } catch (err) {
+    } catch (err: unknown) {
+      clearTimeout(timeoutId);
       console.error('Failed to evaluate voice fidelity:', err);
+      const isTimeout =
+        (err instanceof Error && (err.name === 'AbortError' || err.message.toLowerCase().includes('abort'))) ||
+        (err instanceof DOMException && err.name === 'AbortError');
+      setFidelityErrors((prev) => ({
+        ...prev,
+        [platform]: isTimeout
+          ? 'Took too long to calculate (20s timeout)'
+          : err instanceof Error
+          ? err.message
+          : 'Failed to score fidelity',
+      }));
     } finally {
       setLoadingFidelity(false);
     }
@@ -182,6 +224,7 @@ export function PlatformCopySection({ clip, brain, clipId }: PlatformCopySection
 
   const currentCopy = copyData[selectedPlatform];
   const currentFidelity = fidelityData[selectedPlatform];
+  const currentFidelityError = fidelityErrors[selectedPlatform];
 
   const ringScore = currentFidelity?.score ?? null;
   const ringColor =
@@ -272,90 +315,133 @@ export function PlatformCopySection({ clip, brain, clipId }: PlatformCopySection
           >
             {/* Voice Fidelity Score Bar */}
             <div className="relative rounded-2xl border border-neutral-800 bg-neutral-950/90 p-3 backdrop-blur-md">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                {/* Left: Score Ring */}
-                <div className="flex items-center gap-3">
-                  {/* SVG Circular Progress Ring */}
-                  <div className="relative flex items-center justify-center h-10 w-10 shrink-0">
-                    <svg className="h-10 w-10 transform -rotate-90" viewBox="0 0 36 36">
-                      <path
-                        className="text-neutral-800"
-                        strokeWidth="3.5"
-                        stroke="currentColor"
-                        fill="none"
-                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                      />
-                      {currentFidelity && (
+              {!hasVoice ? (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-1.5">
+                      <Sparkles className="h-3.5 w-3.5 text-indigo-400" />
+                      <span className="font-semibold text-white text-xs">Brand Voice Inactive</span>
+                    </div>
+                    <p className="text-[11px] text-neutral-400">
+                      Learn your voice or use a sample voice to calculate authenticity match scores.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={onOpenVoicePanel}
+                    className="rounded-xl border-indigo-500/30 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 text-xs font-mono h-8 px-3 shrink-0 flex items-center gap-1.5 transition-all shadow-sm"
+                  >
+                    <Sparkles className="h-3 w-3 text-indigo-400" />
+                    <span>Learn your voice to unlock match score</span>
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  {/* Left: Score Ring */}
+                  <div className="flex items-center gap-3">
+                    {/* SVG Circular Progress Ring */}
+                    <div className="relative flex items-center justify-center h-10 w-10 shrink-0">
+                      <svg className="h-10 w-10 transform -rotate-90" viewBox="0 0 36 36">
                         <path
-                          className={ringColor}
-                          strokeDasharray={`${currentFidelity.score}, 100`}
+                          className="text-neutral-800"
                           strokeWidth="3.5"
-                          strokeLinecap="round"
                           stroke="currentColor"
                           fill="none"
                           d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                         />
-                      )}
-                    </svg>
-                    <span className="absolute font-mono text-[11px] font-bold text-white">
-                      {loadingFidelity ? '...' : currentFidelity ? `${currentFidelity.score}%` : '--'}
-                    </span>
-                  </div>
-
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-semibold text-white text-xs">
-                        {currentFidelity
-                          ? `Sounds like you: ${currentFidelity.score}%`
-                          : loadingFidelity
-                          ? 'Evaluating voice fidelity...'
-                          : 'Sounds like you: calculating'}
+                        {currentFidelity && (
+                          <path
+                            className={ringColor}
+                            strokeDasharray={`${currentFidelity.score}, 100`}
+                            strokeWidth="3.5"
+                            strokeLinecap="round"
+                            stroke="currentColor"
+                            fill="none"
+                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                          />
+                        )}
+                      </svg>
+                      <span className="absolute font-mono text-[11px] font-bold text-white">
+                        {loadingFidelity ? '...' : currentFidelity ? `${currentFidelity.score}%` : '--'}
                       </span>
+                    </div>
 
-                      {/* Tooltip Trigger */}
-                      {currentFidelity && (
-                        <button
-                          type="button"
-                          onClick={() => setShowTooltip(!showTooltip)}
-                          className="text-neutral-400 hover:text-indigo-300 transition-colors p-0.5 rounded"
-                          title="View matched & mismatched traits"
-                        >
-                          <Info className="h-3.5 w-3.5" />
-                        </button>
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-semibold text-white text-xs">
+                          {currentFidelity
+                            ? `Sounds like you: ${currentFidelity.score}%`
+                            : loadingFidelity
+                            ? 'Evaluating voice fidelity...'
+                            : currentFidelityError
+                            ? 'Voice match evaluation failed'
+                            : 'Sounds like you: calculating'}
+                        </span>
+
+                        {/* Tooltip Trigger */}
+                        {currentFidelity && (
+                          <button
+                            type="button"
+                            onClick={() => setShowTooltip(!showTooltip)}
+                            className="text-neutral-400 hover:text-indigo-300 transition-colors p-0.5 rounded"
+                            title="View matched & mismatched traits"
+                          >
+                            <Info className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      {currentFidelityError ? (
+                        <div className="flex items-center gap-1.5 text-rose-300 text-[11px]">
+                          <AlertCircle className="h-3 w-3 text-rose-400 shrink-0" />
+                          <span>{currentFidelityError}</span>
+                          <button
+                            type="button"
+                            onClick={() => evaluateFidelity(selectedPlatform, currentCopy)}
+                            className="underline text-rose-400 hover:text-rose-200 ml-1 font-mono text-[10px]"
+                          >
+                            Retry
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-neutral-400">
+                          {currentFidelity && currentFidelity.mismatched_traits.length > 0
+                            ? `${currentFidelity.mismatched_traits.length} tonal mismatch${
+                                currentFidelity.mismatched_traits.length > 1 ? 'es' : ''
+                              } detected`
+                            : loadingFidelity
+                            ? 'Evaluating against your brand voice traits (max 20s)...'
+                            : 'Accurately reflects your brand voice traits.'}
+                        </p>
                       )}
                     </div>
-                    <p className="text-[11px] text-neutral-400">
-                      {currentFidelity && currentFidelity.mismatched_traits.length > 0
-                        ? `${currentFidelity.mismatched_traits.length} tonal mismatch${
-                            currentFidelity.mismatched_traits.length > 1 ? 'es' : ''
-                          } detected`
-                        : 'Accurately reflects your brand voice traits.'}
-                    </p>
+                  </div>
+
+                  {/* Right: Improve Match Button */}
+                  <div className="flex items-center gap-2">
+                    <Button
+                      onClick={handleImproveMatch}
+                      disabled={improvingMatch || loading || loadingFidelity || !hasVoice}
+                      size="sm"
+                      className="rounded-xl bg-indigo-600/90 text-white hover:bg-indigo-500 h-8 text-[11px] font-medium px-3 flex items-center gap-1.5 shadow-sm shadow-indigo-600/20 disabled:opacity-50"
+                    >
+                      {improvingMatch ? (
+                        <>
+                          <RotateCw className="h-3 w-3 animate-spin" />
+                          <span>Improving...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Wand2 className="h-3 w-3" />
+                          <span>Improve match</span>
+                        </>
+                      )}
+                    </Button>
                   </div>
                 </div>
-
-                {/* Right: Improve Match Button */}
-                <div className="flex items-center gap-2">
-                  <Button
-                    onClick={handleImproveMatch}
-                    disabled={improvingMatch || loading || loadingFidelity}
-                    size="sm"
-                    className="rounded-xl bg-indigo-600/90 text-white hover:bg-indigo-500 h-8 text-[11px] font-medium px-3 flex items-center gap-1.5 shadow-sm shadow-indigo-600/20 disabled:opacity-50"
-                  >
-                    {improvingMatch ? (
-                      <>
-                        <RotateCw className="h-3 w-3 animate-spin" />
-                        <span>Improving...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Wand2 className="h-3 w-3" />
-                        <span>Improve match</span>
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
+              )}
 
               {/* Tooltip / Breakdown Drawer */}
               <AnimatePresence>

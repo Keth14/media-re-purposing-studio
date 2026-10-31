@@ -34,17 +34,12 @@ import {
   PostedResult,
   DiffViewData,
   BrainRule,
+  TranscriptSegment,
 } from '@/types';
 import { getBrain, saveBrain, restoreBrainVersion } from '@/lib/brain';
 import { getPostedResults } from '@/lib/tracker';
 import { computeStats } from '@/lib/stats';
 import { rerankClips } from '@/lib/rerank';
-import {
-  DEMO_SAMPLE_CLIPS,
-  DEMO_SAMPLE_VIDEO_ID,
-  DEMO_SAMPLE_TRANSCRIPT,
-  DEMO_SAMPLE_TOTAL_DURATION,
-} from '@/lib/demo-sample';
 
 type TabType = 'youtube' | 'paste';
 type ViewMode = 'clips' | 'brain';
@@ -61,9 +56,26 @@ export default function Home() {
   const [fallbackNotice, setFallbackNotice] = useState<string | null>(null);
 
   const [videoId, setVideoId] = useState<string | null>(null);
+  const [videoTitle, setVideoTitle] = useState<string | null>(null);
+  const [transcriptSegments, setTranscriptSegments] = useState<TranscriptSegment[]>([]);
+  const [totalDuration, setTotalDuration] = useState<number>(360);
   const [transcriptPreview, setTranscriptPreview] = useState<string | null>(null);
   const [clips, setClips] = useState<Clip[]>([]);
   const [fromCache, setFromCache] = useState<boolean>(false);
+  const [isSampleVideo, setIsSampleVideo] = useState<boolean>(false);
+
+  // Sample data from src/data/sample.json
+  const [hasSample, setHasSample] = useState<boolean>(false);
+  const [sampleData, setSampleData] = useState<{
+    videoId: string;
+    title: string;
+    totalDuration: number;
+    formattedTranscript: string;
+    transcriptSegments: TranscriptSegment[];
+    clips: Clip[];
+  } | null>(null);
+  const [isSavingSample, setIsSavingSample] = useState<boolean>(false);
+  const [sampleSaveSuccess, setSampleSaveSuccess] = useState<string | null>(null);
 
   // Brand Voice & Learning State
   const [brain, setBrain] = useState<BrainState | null>(null);
@@ -76,10 +88,28 @@ export default function Home() {
   const [previousBrain, setPreviousBrain] = useState<BrainState | null>(null);
   const [isUpdatingBrain, setIsUpdatingBrain] = useState<boolean>(false);
 
-  // Load brain & posted results from localStorage on mount
+  // Load brain, posted results, and check sample.json on mount
   useEffect(() => {
     setBrain(getBrain());
     setPostedResults(getPostedResults());
+
+    // Check if sample.json exists and load it
+    fetch('/api/sample')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && data.hasSample && data.sample) {
+          setHasSample(true);
+          setSampleData(data.sample);
+        } else {
+          setHasSample(false);
+          setSampleData(null);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to load sample data:', err);
+        setHasSample(false);
+        setSampleData(null);
+      });
   }, []);
 
   // Prevent double-clicks or React strict-mode double firing
@@ -181,7 +211,11 @@ export default function Home() {
       }
 
       setVideoId(ingestData.videoId);
+      setVideoTitle(ingestData.videoTitle || 'Processed Video');
       setTranscriptPreview(ingestData.formattedTranscript);
+      setTranscriptSegments(ingestData.segments || []);
+      setTotalDuration(ingestData.totalDuration || 360);
+      setIsSampleVideo(false);
 
       // Step 2: Clip Selection via Gemini (with 45s AbortController timeout)
       setLoadingStep('AI analyzing viral hooks & extracting the 6 best clips...');
@@ -237,15 +271,56 @@ export default function Home() {
     }
   };
 
-  // Instant Demo: Try Sample Video (Strangers see results in 2 seconds with no key or transcript)
+  // Instant Demo: Try Sample Video (Loaded ONLY from src/data/sample.json)
   const handleTrySampleVideo = () => {
+    if (!sampleData) return;
     setError(null);
     setFallbackNotice(null);
-    setVideoId(DEMO_SAMPLE_VIDEO_ID);
-    setTranscriptPreview(DEMO_SAMPLE_TRANSCRIPT);
+    setVideoId(sampleData.videoId);
+    setVideoTitle(sampleData.title);
+    setTranscriptPreview(sampleData.formattedTranscript);
+    setTranscriptSegments(sampleData.transcriptSegments || []);
+    setTotalDuration(sampleData.totalDuration || 360);
     setFromCache(true);
-    const reranked = rerankClips(DEMO_SAMPLE_CLIPS, brain?.weights);
+    setIsSampleVideo(true);
+    const reranked = rerankClips(sampleData.clips, brain?.weights);
     setClips(reranked);
+  };
+
+  // Dev-only: Save Current Video & Generated Clips as Sample to src/data/sample.json
+  const handleSaveAsSample = async () => {
+    if (!videoId || clips.length === 0) return;
+    setIsSavingSample(true);
+    setSampleSaveSuccess(null);
+    try {
+      const res = await fetch('/api/sample', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          videoId,
+          title: videoTitle || 'Real Processed Video',
+          formattedTranscript: transcriptPreview,
+          transcriptSegments,
+          totalDuration,
+          clips: clips.slice(0, 6),
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setHasSample(true);
+        setSampleData(data.sample);
+        setSampleSaveSuccess('Saved to src/data/sample.json');
+        setTimeout(() => setSampleSaveSuccess(null), 5000);
+      } else {
+        throw new Error(data.error || 'Failed to save sample.');
+      }
+    } catch (err: unknown) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : 'Failed to save sample.');
+    } finally {
+      setIsSavingSample(false);
+    }
   };
 
   // Feedback Loop: Learn & Update Brand Brain from Performance Stats
@@ -764,21 +839,23 @@ export default function Home() {
                   )}
                 </Button>
 
-                {/* "Try sample video" button: loads cached clips instantly so strangers see results in 2s with no key or transcript */}
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handleTrySampleVideo}
-                  disabled={Boolean(loadingStep)}
-                  className="w-full sm:w-auto rounded-xl border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 hover:text-white h-12 px-5 text-xs text-neutral-300 font-mono transition-all flex items-center justify-center gap-2 shrink-0 shadow-sm"
-                  title="Instantly preview 6 scored clips with no API key or transcript required"
-                >
-                  <Play className="h-3.5 w-3.5 text-indigo-400" />
-                  <span>Try sample video</span>
-                  <span className="rounded bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 px-1.5 py-0.2 text-[9px]">
-                    instant
-                  </span>
-                </Button>
+                {/* "Try sample video" button: loads only from src/data/sample.json; hidden if missing */}
+                {hasSample && sampleData && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleTrySampleVideo}
+                    disabled={Boolean(loadingStep)}
+                    className="w-full sm:w-auto rounded-xl border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 hover:text-white h-12 px-5 text-xs text-neutral-300 font-mono transition-all flex items-center justify-center gap-2 shrink-0 shadow-sm"
+                    title={`Instantly preview clips from "${sampleData.title}"`}
+                  >
+                    <Play className="h-3.5 w-3.5 text-indigo-400" />
+                    <span>Try sample video</span>
+                    <span className="rounded bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 px-1.5 py-0.2 text-[9px]">
+                      sample
+                    </span>
+                  </Button>
+                )}
               </div>
             </div>
 
@@ -797,13 +874,42 @@ export default function Home() {
                 </div>
 
                 {clips.length > 0 && (
-                  <div className="flex items-center gap-2">
-                    {fromCache && (
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-xs text-emerald-400 font-mono">
-                        <Sparkles className="h-3 w-3" />
-                        Cached
-                      </span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {(fromCache || isSampleVideo) && (
+                      <div className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs text-amber-300 font-mono">
+                        <span className="rounded bg-amber-500/20 text-amber-200 border border-amber-500/40 px-1.5 py-0.2 text-[9px] uppercase tracking-wider font-bold">
+                          sample
+                        </span>
+                        <span className="truncate max-w-[200px] sm:max-w-[320px]">
+                          Sample: {videoTitle || sampleData?.title || 'Featured Video'}
+                        </span>
+                      </div>
                     )}
+
+                    {/* Dev-Only "Save as sample" button: appears only when NODE_ENV is development and real clips are generated */}
+                    {process.env.NODE_ENV === 'development' && !fromCache && !isSampleVideo && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={handleSaveAsSample}
+                        disabled={isSavingSample}
+                        className="rounded-xl border border-indigo-500/40 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-200 text-xs font-mono h-8 px-3 flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
+                        title="Dev-only: Save video ID, title, transcript, and 6 clips to src/data/sample.json"
+                      >
+                        {isSavingSample ? (
+                          <>
+                            <RefreshCw className="h-3 w-3 animate-spin text-indigo-300" />
+                            <span>Saving...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="h-3 w-3 text-indigo-400" />
+                            <span>Save as sample</span>
+                          </>
+                        )}
+                      </Button>
+                    )}
+
                     <div className="inline-flex items-center gap-2 rounded-full border border-neutral-800 bg-neutral-900 px-3 py-1 text-xs text-neutral-300 font-mono">
                       <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
                       <span>{clips.length} clips ready</span>
@@ -811,6 +917,21 @@ export default function Home() {
                   </div>
                 )}
               </div>
+
+              {/* Sample Save Toast */}
+              <AnimatePresence>
+                {sampleSaveSuccess && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-3.5 text-xs text-emerald-300 flex items-center gap-2.5 font-mono"
+                  >
+                    <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                    <span>{sampleSaveSuccess}</span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               {/* Skeletons on Loading */}
               {loadingStep && (
@@ -832,18 +953,20 @@ export default function Home() {
                       No clips extracted yet
                     </h3>
                     <p className="text-xs text-neutral-500 max-w-sm leading-relaxed mx-auto">
-                      Enter a YouTube URL above or click &ldquo;Try sample video&rdquo; to test instant short-form extraction.
+                      Enter a YouTube URL above or paste a transcript to test instant short-form extraction.
                     </p>
                   </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handleTrySampleVideo}
-                    className="rounded-xl border-neutral-800 bg-neutral-900 text-xs text-neutral-300 hover:text-white"
-                  >
-                    <Play className="mr-1.5 h-3.5 w-3.5 text-indigo-400" />
-                    Load Sample Clips
-                  </Button>
+                  {hasSample && sampleData && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleTrySampleVideo}
+                      className="rounded-xl border-neutral-800 bg-neutral-900 text-xs text-neutral-300 hover:text-white"
+                    >
+                      <Play className="mr-1.5 h-3.5 w-3.5 text-indigo-400" />
+                      Load Sample Clips
+                    </Button>
+                  )}
                 </div>
               )}
 
@@ -870,8 +993,11 @@ export default function Home() {
                       videoId={videoId}
                       rank={idx + 1}
                       brain={brain}
-                      totalDuration={DEMO_SAMPLE_TOTAL_DURATION}
+                      totalDuration={totalDuration}
                       onResultLogged={handleRefreshResults}
+                      onOpenVoicePanel={() => setIsVoicePanelOpen(true)}
+                      isSample={fromCache || isSampleVideo}
+                      sampleVideoTitle={videoTitle || sampleData?.title}
                     />
                   ))}
                 </motion.div>

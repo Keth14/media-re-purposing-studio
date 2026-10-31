@@ -35,6 +35,7 @@ export interface Clip {
 export interface IngestResponse {
   success: boolean;
   videoId: string | null;
+  videoTitle?: string;
   segments: TranscriptSegment[];
   formattedTranscript: string;
   totalDuration: number;

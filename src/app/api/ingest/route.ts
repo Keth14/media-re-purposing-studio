@@ -35,9 +35,25 @@ export async function POST(req: NextRequest) {
         );
       }
 
+      let videoTitle = 'Pasted Video Transcript';
+      if (resolvedVideoId) {
+        try {
+          const oembedRes = await fetch(
+            `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${resolvedVideoId}&format=json`
+          );
+          if (oembedRes.ok) {
+            const oembedData = await oembedRes.json();
+            if (oembedData.title) videoTitle = oembedData.title;
+          }
+        } catch {
+          // fallback
+        }
+      }
+
       return NextResponse.json({
         success: true,
         videoId: resolvedVideoId,
+        videoTitle,
         segments: parsed.segments,
         formattedTranscript: parsed.formattedTranscript,
         totalDuration: parsed.totalDuration,
@@ -97,9 +113,23 @@ export async function POST(req: NextRequest) {
 
         const merged = mergeTranscriptSegments(normalizedSegments, 20);
 
+        let videoTitle = 'YouTube Video';
+        try {
+          const oembedRes = await fetch(
+            `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`
+          );
+          if (oembedRes.ok) {
+            const oembedData = await oembedRes.json();
+            if (oembedData.title) videoTitle = oembedData.title;
+          }
+        } catch {
+          // fallback
+        }
+
         return NextResponse.json({
           success: true,
           videoId,
+          videoTitle,
           segments: merged.segments,
           formattedTranscript: merged.formattedTranscript,
           totalDuration: merged.totalDuration,

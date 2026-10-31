@@ -15,7 +15,7 @@ export function getSanitizedApiKey(rawKey?: string): string {
 
 export function getGeminiModel(): string {
   const model = process.env.GEMINI_MODEL;
-  if (!model) return 'gemini-3.8-flash';
+  if (!model) return 'gemini-3.5-flash';
   const clean = model.trim().replace(/^["']|["']$/g, '').trim();
-  return clean || 'gemini-3.8-flash';
+  return clean || 'gemini-3.5-flash';
 }

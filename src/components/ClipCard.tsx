@@ -14,6 +14,9 @@ interface ClipCardProps {
   brain?: BrainState | null;
   onResultLogged?: () => void;
   totalDuration?: number;
+  onOpenVoicePanel?: () => void;
+  isSample?: boolean;
+  sampleVideoTitle?: string | null;
 }
 
 const HOOK_BADGE_STYLES: Record<HookType, { bg: string; text: string; border: string }> = {
@@ -44,7 +47,17 @@ const HOOK_BADGE_STYLES: Record<HookType, { bg: string; text: string; border: st
   },
 };
 
-export function ClipCard({ clip, videoId, rank, brain, onResultLogged, totalDuration: propTotalDuration }: ClipCardProps) {
+export function ClipCard({
+  clip,
+  videoId,
+  rank,
+  brain,
+  onResultLogged,
+  totalDuration: propTotalDuration,
+  onOpenVoicePanel,
+  isSample,
+  sampleVideoTitle,
+}: ClipCardProps) {
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
   const duration = Math.max(1, clip.end_sec - clip.start_sec);
   const hookStyle = HOOK_BADGE_STYLES[clip.hook_type] || HOOK_BADGE_STYLES['bold claim'];
@@ -72,6 +85,20 @@ export function ClipCard({ clip, videoId, rank, brain, onResultLogged, totalDura
       }}
       className="group relative flex flex-col rounded-3xl border border-neutral-800/80 bg-neutral-950/70 p-5 backdrop-blur-xl shadow-2xl shadow-black/80 transition-all duration-300 hover:border-neutral-700 hover:bg-neutral-950/90"
     >
+      {/* Sample Video Label & Tag */}
+      {isSample && (
+        <div className="mb-3.5 flex items-center justify-between rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-300 font-mono">
+          <div className="flex items-center gap-2 truncate">
+            <span className="rounded bg-amber-500/20 text-amber-200 border border-amber-500/40 px-1.5 py-0.2 text-[9px] uppercase tracking-wider font-bold shrink-0">
+              sample
+            </span>
+            <span className="truncate text-amber-200/90 font-medium text-[11px]">
+              Sample: {sampleVideoTitle || 'Featured Video'}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Top Bar: Rank & Overall Score */}
       <div className="mb-3.5 flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -236,6 +263,7 @@ export function ClipCard({ clip, videoId, rank, brain, onResultLogged, totalDura
         clip={clip}
         brain={brain || null}
         clipId={clip.id || `clip-${rank}-${clip.start_sec}-${clip.end_sec}`}
+        onOpenVoicePanel={onOpenVoicePanel}
       />
 
       {/* Log Result Modal */}
