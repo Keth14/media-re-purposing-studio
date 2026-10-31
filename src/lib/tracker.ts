@@ -266,3 +266,4 @@ export function loadSampleResults(): PostedResult[] {
 
   return loaded;
 }
+

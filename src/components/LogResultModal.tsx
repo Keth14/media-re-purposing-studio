@@ -226,3 +226,4 @@ export function LogResultModal({
     </AnimatePresence>
   );
 }
+

@@ -59,13 +59,9 @@ export function computeStats(posts: PostedResult[]): ComputedStats {
         ? Math.round(((meanScore - overallMean) / overallMean) * 1000) / 10
         : 0;
 
-    let status: GroupStat['status'] = 'neutral';
-    if (count < 2) {
-      status = 'not enough data';
-    } else if (lift > 15) {
+    let status: GroupStat['status'] = 'not enough data';
+    if (count >= 2 && lift > 15) {
       status = 'winning';
-    } else if (lift < -15) {
-      status = 'underperforming';
     }
 
     return {
@@ -163,11 +159,11 @@ export function computeStats(posts: PostedResult[]): ComputedStats {
 
 /**
  * Calculates multiplier for ranking based on lift:
- * Clamp between 0.7 and 1.3
- * e.g. +40% lift -> multiplier 1.2; -30% lift -> multiplier 0.85
+ * Store a multiplier per hook_type and per duration bucket in the brain, from the lift values, clamped 0.7 to 1.3.
  */
 export function calculateMultiplier(lift: number): number {
-  const scaled = 1 + (lift / 100) * 0.5;
+  const scaled = 1 + lift / 100;
   const clamped = Math.max(0.7, Math.min(1.3, scaled));
   return Math.round(clamped * 100) / 100;
 }
+

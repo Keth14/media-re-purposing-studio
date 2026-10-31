@@ -65,6 +65,7 @@ export interface BrainRule {
   evidence: string;
   source: string; // 'sample' | 'learned_samples' | 'feedback_loop'
   createdAt: string;
+  confidence?: number;
 }
 
 export interface BrainWeights {

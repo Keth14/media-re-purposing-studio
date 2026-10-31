@@ -182,7 +182,8 @@ Generate the structured JSON updates.`;
         if (responseText) break;
       } catch (err: unknown) {
         lastError = err;
-        console.warn(`Model ${m} failed for /api/learn, attempting fallback...`);
+        console.warn(`Model ${m} failed for /api/learn, attempting fallback...`, err instanceof Error ? err.message : err);
+        await new Promise((resolve) => setTimeout(resolve, 1500));
       }
     }
 
@@ -234,6 +235,7 @@ Generate the structured JSON updates.`;
         id: `rule-learned-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         text: rule.text,
         evidence: rule.evidence,
+        confidence: typeof rule.confidence === 'number' ? rule.confidence : 0.85,
         source: 'feedback_loop',
         createdAt: new Date().toISOString(),
       });
@@ -273,3 +275,4 @@ Generate the structured JSON updates.`;
     return NextResponse.json({ success: false, error }, { status: 500 });
   }
 }
+
