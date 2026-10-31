@@ -1,7 +1,13 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
+
+// Dynamic import for 3D Boot Intro (ssr: false)
+const BootIntro = dynamic(() => import('@/components/BootIntro'), {
+  ssr: false,
+});
 import {
   Brain,
   Video,
@@ -77,6 +83,9 @@ export default function Home() {
   const [isSavingSample, setIsSavingSample] = useState<boolean>(false);
   const [sampleSaveSuccess, setSampleSaveSuccess] = useState<string | null>(null);
 
+  // 3D Boot Intro Session State (Plays once per browser session)
+  const [showIntro, setShowIntro] = useState<boolean>(false);
+
   // Brand Voice & Learning State
   const [brain, setBrain] = useState<BrainState | null>(null);
   const [postedResults, setPostedResults] = useState<PostedResult[]>([]);
@@ -88,10 +97,20 @@ export default function Home() {
   const [previousBrain, setPreviousBrain] = useState<BrainState | null>(null);
   const [isUpdatingBrain, setIsUpdatingBrain] = useState<boolean>(false);
 
-  // Load brain, posted results, and check sample.json on mount
+  // Load brain, posted results, check sample.json, and check intro session on mount
   useEffect(() => {
     setBrain(getBrain());
     setPostedResults(getPostedResults());
+
+    // Check if intro has been seen this session
+    try {
+      const seen = sessionStorage.getItem('brandbrain_intro_seen');
+      if (seen !== 'true') {
+        setShowIntro(true);
+      }
+    } catch (e) {
+      console.warn('sessionStorage unavailable for intro check:', e);
+    }
 
     // Check if sample.json exists and load it
     fetch('/api/sample')
@@ -111,6 +130,15 @@ export default function Home() {
         setSampleData(null);
       });
   }, []);
+
+  const handleReplayIntro = () => {
+    try {
+      sessionStorage.removeItem('brandbrain_intro_seen');
+    } catch (e) {
+      console.warn('sessionStorage error removing intro key:', e);
+    }
+    setShowIntro(true);
+  };
 
   // Prevent double-clicks or React strict-mode double firing
   const isSubmittingRef = React.useRef<boolean>(false);
@@ -1044,8 +1072,22 @@ export default function Home() {
           <p className="text-[11px] text-neutral-600 font-mono">
             Brand Brain Studio • Algorithmic Video Repurposing & Voice Engine
           </p>
+          <div>
+            <button
+              type="button"
+              onClick={handleReplayIntro}
+              className="text-[11px] font-mono text-neutral-500 hover:text-indigo-400 transition-colors underline cursor-pointer mt-1"
+            >
+              Replay intro
+            </button>
+          </div>
         </footer>
       </div>
+
+      {/* 3D Boot Intro Overlay (Plays once per session, preloads app behind it) */}
+      {showIntro && (
+        <BootIntro onComplete={() => setShowIntro(false)} />
+      )}
 
       {/* Brand Voice Side Panel Drawer */}
       <BrandVoicePanel
