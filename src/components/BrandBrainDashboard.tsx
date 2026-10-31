@@ -279,6 +279,7 @@ export function BrandBrainDashboard({
               {brain.rules.map((rule) => {
                 const isSample = rule.source === 'sample';
                 const isFeedback = rule.source === 'feedback_loop';
+                const isDictated = rule.source === 'dictated';
                 return (
                   <div
                     key={rule.id}
@@ -290,14 +291,22 @@ export function BrandBrainDashboard({
                       </p>
                       <span
                         className={`rounded-full px-2.5 py-0.5 text-[10px] font-mono shrink-0 font-medium ${
-                          isFeedback
+                          isDictated
+                            ? 'bg-fuchsia-500/15 border border-fuchsia-500/30 text-fuchsia-300'
+                            : isFeedback
                             ? 'bg-indigo-500/15 border border-indigo-500/30 text-indigo-300'
                             : isSample
                             ? 'bg-amber-500/15 border border-amber-500/30 text-amber-300'
                             : 'bg-neutral-800 text-neutral-300'
                         }`}
                       >
-                        source: {isFeedback ? 'real data' : isSample ? 'sample' : 'writing sample'}
+                        {isDictated
+                          ? 'dictated'
+                          : isFeedback
+                          ? 'real data'
+                          : isSample
+                          ? 'sample'
+                          : 'writing sample'}
                       </span>
                     </div>
 

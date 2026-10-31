@@ -1,31 +1,44 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Copy,
-  Check,
-  RotateCw,
-  Sparkles,
   Video,
   Camera,
   Briefcase,
   Send,
+  Copy,
+  Check,
+  RotateCw,
+  Sparkles,
+  AlertCircle,
   Type,
   AlignLeft,
   Hash,
   MonitorPlay,
-  AlertCircle,
+  HelpCircle,
+  CheckCircle2,
+  XCircle,
+  Wand2,
+  Info,
 } from 'lucide-react';
-import { Clip, Platform, PlatformCopy, BrainState, CopyResponse } from '@/types';
+import {
+  Clip,
+  Platform,
+  PlatformCopy,
+  BrainState,
+  CopyResponse,
+  VoiceFidelityResult,
+  FidelityResponse,
+} from '@/types';
 import { Button } from '@/components/ui/button';
 
 interface PlatformCopySectionProps {
   clip: Clip;
   brain: BrainState | null;
-  clipId: string;
+  clipId?: string;
 }
 
-const PLATFORMS: { id: Platform; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-  { id: 'youtube_shorts', label: 'Shorts', icon: Video },
+const PLATFORMS: { id: Platform; label: string; icon: React.ElementType }[] = [
+  { id: 'youtube_shorts', label: 'YouTube Shorts', icon: Video },
   { id: 'instagram_reels', label: 'Reels', icon: Camera },
   { id: 'linkedin', label: 'LinkedIn', icon: Briefcase },
   { id: 'x', label: 'X', icon: Send },
@@ -39,19 +52,68 @@ export function PlatformCopySection({ clip, brain, clipId }: PlatformCopySection
     linkedin: null,
     x: null,
   });
+  const [fidelityData, setFidelityData] = useState<Record<Platform, VoiceFidelityResult | null>>({
+    youtube_shorts: null,
+    instagram_reels: null,
+    linkedin: null,
+    x: null,
+  });
   const [loading, setLoading] = useState<boolean>(false);
+  const [loadingFidelity, setLoadingFidelity] = useState<boolean>(false);
+  const [improvingMatch, setImprovingMatch] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [showTooltip, setShowTooltip] = useState<boolean>(false);
 
   const voiceVersion = brain?.version || 1;
 
-  const fetchCopy = async (platform: Platform, forceRegen = false) => {
-    // If we already have it in local state and not forcing regen, skip
-    if (!forceRegen && copyData[platform]) {
+  const evaluateFidelity = async (platform: Platform, copyItem: PlatformCopy) => {
+    if (!copyItem || !brain?.voice) return;
+    const combinedText = `${copyItem.hook}\n\n${copyItem.caption}`.trim();
+    if (!combinedText) return;
+
+    setLoadingFidelity(true);
+    try {
+      const res = await fetch('/api/fidelity', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: combinedText,
+          voice: brain.voice,
+          voiceVersion: brain.version || 1,
+        }),
+      });
+
+      const data: FidelityResponse = await res.json();
+      if (res.ok && data.success && typeof data.score === 'number') {
+        setFidelityData((prev) => ({
+          ...prev,
+          [platform]: {
+            score: data.score!,
+            matched_traits: data.matched_traits || [],
+            mismatched_traits: data.mismatched_traits || [],
+            suggested_rewrite: data.suggested_rewrite || '',
+          },
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to evaluate voice fidelity:', err);
+    } finally {
+      setLoadingFidelity(false);
+    }
+  };
+
+  const fetchCopy = async (platform: Platform, forceRegen = false, constraints?: string[]) => {
+    // If we already have it in local state and not forcing regen or constraints, skip
+    if (!forceRegen && !constraints && copyData[platform]) {
       return;
     }
 
-    setLoading(true);
+    if (constraints && constraints.length > 0) {
+      setImprovingMatch(true);
+    } else {
+      setLoading(true);
+    }
     setError(null);
 
     try {
@@ -66,6 +128,7 @@ export function PlatformCopySection({ clip, brain, clipId }: PlatformCopySection
           voiceVersion,
           rulesVersion: brain?.version || 1,
           clipId,
+          constraints: constraints || undefined,
         }),
       });
 
@@ -78,11 +141,15 @@ export function PlatformCopySection({ clip, brain, clipId }: PlatformCopySection
         ...prev,
         [platform]: data.copy,
       }));
+
+      // Automatically evaluate voice fidelity for the newly generated copy
+      evaluateFidelity(platform, data.copy);
     } catch (err: unknown) {
       console.error(err);
       setError(err instanceof Error ? err.message : 'Error generating copy.');
     } finally {
       setLoading(false);
+      setImprovingMatch(false);
     }
   };
 
@@ -101,7 +168,28 @@ export function PlatformCopySection({ clip, brain, clipId }: PlatformCopySection
     }, 2000);
   };
 
+  const handleImproveMatch = () => {
+    const currentFid = fidelityData[selectedPlatform];
+    const mismatches = currentFid?.mismatched_traits || [];
+    const constraints = [
+      ...mismatches.map((m) => `Strictly fix mismatch: ${m}`),
+      ...(currentFid?.suggested_rewrite
+        ? [`Incorporate style: "${currentFid.suggested_rewrite}"`]
+        : []),
+    ];
+    fetchCopy(selectedPlatform, true, constraints);
+  };
+
   const currentCopy = copyData[selectedPlatform];
+  const currentFidelity = fidelityData[selectedPlatform];
+
+  const ringScore = currentFidelity?.score ?? null;
+  const ringColor =
+    ringScore !== null && ringScore >= 85
+      ? 'text-emerald-400'
+      : ringScore !== null && ringScore >= 70
+      ? 'text-indigo-400'
+      : 'text-amber-400';
 
   return (
     <div className="mt-5 border-t border-neutral-800/80 pt-4 space-y-4">
@@ -134,7 +222,10 @@ export function PlatformCopySection({ clip, brain, clipId }: PlatformCopySection
             <button
               key={p.id}
               type="button"
-              onClick={() => setSelectedPlatform(p.id)}
+              onClick={() => {
+                setSelectedPlatform(p.id);
+                setShowTooltip(false);
+              }}
               className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-medium transition-all ${
                 isActive
                   ? 'bg-neutral-800 text-white shadow-sm'
@@ -177,8 +268,168 @@ export function PlatformCopySection({ clip, brain, clipId }: PlatformCopySection
           <motion.div
             initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
-            className="space-y-2.5 text-xs"
+            className="space-y-3 text-xs"
           >
+            {/* Voice Fidelity Score Bar */}
+            <div className="relative rounded-2xl border border-neutral-800 bg-neutral-950/90 p-3 backdrop-blur-md">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                {/* Left: Score Ring */}
+                <div className="flex items-center gap-3">
+                  {/* SVG Circular Progress Ring */}
+                  <div className="relative flex items-center justify-center h-10 w-10 shrink-0">
+                    <svg className="h-10 w-10 transform -rotate-90" viewBox="0 0 36 36">
+                      <path
+                        className="text-neutral-800"
+                        strokeWidth="3.5"
+                        stroke="currentColor"
+                        fill="none"
+                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                      />
+                      {currentFidelity && (
+                        <path
+                          className={ringColor}
+                          strokeDasharray={`${currentFidelity.score}, 100`}
+                          strokeWidth="3.5"
+                          strokeLinecap="round"
+                          stroke="currentColor"
+                          fill="none"
+                          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                        />
+                      )}
+                    </svg>
+                    <span className="absolute font-mono text-[11px] font-bold text-white">
+                      {loadingFidelity ? '...' : currentFidelity ? `${currentFidelity.score}%` : '--'}
+                    </span>
+                  </div>
+
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-semibold text-white text-xs">
+                        {currentFidelity
+                          ? `Sounds like you: ${currentFidelity.score}%`
+                          : loadingFidelity
+                          ? 'Evaluating voice fidelity...'
+                          : 'Sounds like you: calculating'}
+                      </span>
+
+                      {/* Tooltip Trigger */}
+                      {currentFidelity && (
+                        <button
+                          type="button"
+                          onClick={() => setShowTooltip(!showTooltip)}
+                          className="text-neutral-400 hover:text-indigo-300 transition-colors p-0.5 rounded"
+                          title="View matched & mismatched traits"
+                        >
+                          <Info className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-neutral-400">
+                      {currentFidelity && currentFidelity.mismatched_traits.length > 0
+                        ? `${currentFidelity.mismatched_traits.length} tonal mismatch${
+                            currentFidelity.mismatched_traits.length > 1 ? 'es' : ''
+                          } detected`
+                        : 'Accurately reflects your brand voice traits.'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Right: Improve Match Button */}
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={handleImproveMatch}
+                    disabled={improvingMatch || loading || loadingFidelity}
+                    size="sm"
+                    className="rounded-xl bg-indigo-600/90 text-white hover:bg-indigo-500 h-8 text-[11px] font-medium px-3 flex items-center gap-1.5 shadow-sm shadow-indigo-600/20 disabled:opacity-50"
+                  >
+                    {improvingMatch ? (
+                      <>
+                        <RotateCw className="h-3 w-3 animate-spin" />
+                        <span>Improving...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Wand2 className="h-3 w-3" />
+                        <span>Improve match</span>
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Tooltip / Breakdown Drawer */}
+              <AnimatePresence>
+                {showTooltip && currentFidelity && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="mt-3 pt-3 border-t border-neutral-800 space-y-2.5 overflow-hidden"
+                  >
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {/* Matched Traits */}
+                      <div className="space-y-1.5 bg-neutral-900/40 rounded-xl p-2.5 border border-neutral-800/60">
+                        <span className="text-[10px] font-mono uppercase tracking-wider text-emerald-400 flex items-center gap-1 font-semibold">
+                          <CheckCircle2 className="h-3 w-3 text-emerald-400" />
+                          Matched Traits ({currentFidelity.matched_traits.length})
+                        </span>
+                        {currentFidelity.matched_traits.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {currentFidelity.matched_traits.map((trait, idx) => (
+                              <span
+                                key={idx}
+                                className="rounded-md bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 text-[10px] text-emerald-300 font-mono"
+                              >
+                                {trait}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-neutral-500 italic">None matched yet.</span>
+                        )}
+                      </div>
+
+                      {/* Mismatched Traits */}
+                      <div className="space-y-1.5 bg-neutral-900/40 rounded-xl p-2.5 border border-neutral-800/60">
+                        <span className="text-[10px] font-mono uppercase tracking-wider text-rose-400 flex items-center gap-1 font-semibold">
+                          <XCircle className="h-3 w-3 text-rose-400" />
+                          Mismatched Traits ({currentFidelity.mismatched_traits.length})
+                        </span>
+                        {currentFidelity.mismatched_traits.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {currentFidelity.mismatched_traits.map((trait, idx) => (
+                              <span
+                                key={idx}
+                                className="rounded-md bg-rose-500/10 border border-rose-500/30 px-2 py-0.5 text-[10px] text-rose-300 font-mono"
+                              >
+                                {trait}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-emerald-400/80 italic">
+                            No voice mismatches!
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Suggested Rewrite */}
+                    {currentFidelity.suggested_rewrite && (
+                      <div className="rounded-xl border border-indigo-500/30 bg-indigo-950/20 p-2.5 space-y-1">
+                        <span className="text-[10px] font-mono uppercase tracking-wider text-indigo-400 font-semibold block">
+                          Suggested Rewrite Line
+                        </span>
+                        <p className="text-neutral-200 text-xs italic">
+                          &ldquo;{currentFidelity.suggested_rewrite}&rdquo;
+                        </p>
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
             {/* Hook / Opener */}
             <div className="group/field rounded-xl border border-neutral-800/80 bg-neutral-950/80 p-2.5 space-y-1 relative">
               <div className="flex items-center justify-between text-[11px] text-neutral-500 font-mono">
@@ -290,7 +541,7 @@ export function PlatformCopySection({ clip, brain, clipId }: PlatformCopySection
             <div className="pt-1 flex items-center justify-end">
               <button
                 type="button"
-                disabled={loading}
+                disabled={loading || improvingMatch}
                 onClick={() => fetchCopy(selectedPlatform, true)}
                 className="flex items-center gap-1.5 text-[11px] text-neutral-400 hover:text-white transition-colors disabled:opacity-50"
               >

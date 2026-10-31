@@ -13,7 +13,16 @@ const VALID_PLATFORMS: Platform[] = ['youtube_shorts', 'instagram_reels', 'linke
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { clip, platform, voice, rules, voiceVersion = 1, rulesVersion, clipId: rawClipId } = body;
+    const {
+      clip,
+      platform,
+      voice,
+      rules,
+      voiceVersion = 1,
+      rulesVersion,
+      clipId: rawClipId,
+      constraints,
+    } = body;
 
     if (!clip || !platform) {
       return NextResponse.json(
@@ -28,16 +37,19 @@ export async function POST(req: NextRequest) {
 
     const clipId = rawClipId || clip.id || `${clip.start_sec}-${clip.end_sec}`;
     const rVer = rulesVersion ?? (Array.isArray(rules) ? rules.length : 0);
+    const hasConstraints = Array.isArray(constraints) && constraints.length > 0;
     const cacheKey = getCopyCacheKey(clipId, selectedPlatform, Number(voiceVersion) || 1, rVer);
 
-    // 1. Check in-memory copy cache
-    const cached = getCachedCopy(cacheKey);
-    if (cached) {
-      return NextResponse.json({
-        success: true,
-        copy: cached,
-        fromCache: true,
-      });
+    // 1. Check in-memory copy cache (bypass if explicit improvement constraints are provided)
+    if (!hasConstraints) {
+      const cached = getCachedCopy(cacheKey);
+      if (cached) {
+        return NextResponse.json({
+          success: true,
+          copy: cached,
+          fromCache: true,
+        });
+      }
     }
 
     // 2. Check rate limit
@@ -106,13 +118,20 @@ Things to AVOID: ${voice.avoid.join(', ')}`
             .join('\n')}`
         : '';
 
+    const constraintsPrompt = hasConstraints
+      ? `\nIMPROVEMENT CONSTRAINTS (FIX PREVIOUS VOICE MISMATCHES):\n${constraints
+          .map((c: string) => `- ${c}`)
+          .join('\n')}\nAddress these mismatches directly and strictly ensure the new copy resolves them.`
+      : '';
+
     const systemPrompt = `You are a premier social media copywriter and repurposing specialist.
 Generate compelling, native social copy for a short video clip.
 
 ${platformInstructions[selectedPlatform]}
 
 ${voicePrompt}
-${rulesPrompt}`;
+${rulesPrompt}
+${constraintsPrompt}`;
 
     const userPrompt = `VIDEO CLIP INFORMATION:
 Title: "${clip.title}"

@@ -107,6 +107,23 @@ export interface CopyResponse {
   fromCache?: boolean;
 }
 
+export interface VoiceFidelityResult {
+  score: number; // 0 - 100
+  matched_traits: string[];
+  mismatched_traits: string[];
+  suggested_rewrite: string;
+}
+
+export interface FidelityResponse {
+  success: boolean;
+  score?: number;
+  matched_traits?: string[];
+  mismatched_traits?: string[];
+  suggested_rewrite?: string;
+  error?: string;
+  fromCache?: boolean;
+}
+
 // Feedback Loop Types
 export interface PostedResult {
   id: string;

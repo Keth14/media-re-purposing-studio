@@ -17,6 +17,35 @@ function extractNumbersFromString(text: string): number[] {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+
+    // Check for dictated creator feedback
+    if (body.dictated_feedback || body.dictated_rule) {
+      const rawText = String(body.dictated_feedback || body.dictated_rule).trim();
+      if (!rawText) {
+        return NextResponse.json(
+          { success: false, error: 'Dictated feedback text is required.' },
+          { status: 400 }
+        );
+      }
+
+      const newRule: BrainRule = {
+        id: `rule-dictated-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        text: rawText,
+        evidence: `Direct creator dictate: "${rawText}"`,
+        source: 'dictated',
+        confidence: 1.0,
+        createdAt: new Date().toISOString(),
+      };
+
+      return NextResponse.json({
+        success: true,
+        new_rule: newRule,
+        new_rules: [newRule],
+        source: 'dictated',
+        explanation: `Creator dictated directive added: "${rawText}"`,
+      });
+    }
+
     const { stats, currentBrain } = body as {
       stats: ComputedStats;
       currentBrain: { voice: BrainVoice; rules: BrainRule[]; version: number; weights?: BrainWeights };
